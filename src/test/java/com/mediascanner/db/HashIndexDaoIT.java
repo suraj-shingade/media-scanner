@@ -118,4 +118,22 @@ class HashIndexDaoIT {
         FileHashRecord found = dao.findByFilePath("/photos/img001.jpg");
         assertThat(found).isNull();
     }
+
+    @Test
+    @Order(8)
+    void testClearAllDeletesAllRows() throws Exception {
+        // Insert two records
+        Instant mtime = Instant.parse("2024-01-01T00:00:00Z");
+        dao.insert(buildRecord("/clear/a.jpg",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 1000, mtime));
+        dao.insert(buildRecord("/clear/b.jpg",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", 2000, mtime));
+
+        dao.clearAll();
+
+        assertThat(dao.findBySha256(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")).isNull();
+        assertThat(dao.findBySha256(
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")).isNull();
+    }
 }

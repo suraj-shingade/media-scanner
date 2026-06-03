@@ -101,6 +101,12 @@ public class HashIndexDao {
         return cacheValid ? record : null;
     }
 
+    public void clearAll() throws SQLException {
+        try (java.sql.Statement st = database.getConnection().createStatement()) {
+            st.executeUpdate("DELETE FROM FILE_HASH_INDEX");
+        }
+    }
+
     private FileHashRecord mapRow(ResultSet rs) throws SQLException {
         FileHashRecord r = new FileHashRecord();
         r.setId(rs.getLong("ID"));

@@ -35,6 +35,7 @@ public class AppConfig {
     private Job.FolderPattern folderPattern;
     private Job.DuplicatePolicy duplicatePolicy;
     private List<IgnoreRule> ignoreRules;
+    private boolean darkMode;
 
     private final Properties props = new Properties();
 
@@ -70,6 +71,8 @@ public class AppConfig {
             props.getProperty("validation.video.min.kb", "100"));
         highPriorityMode = Boolean.parseBoolean(
             props.getProperty("performance.high.priority", "false"));
+        darkMode = Boolean.parseBoolean(
+            props.getProperty("ui.dark.mode", "false"));
 
         String patternStr = props.getProperty("folder.pattern", "YYYY_MMM");
         try {
@@ -110,6 +113,7 @@ public class AppConfig {
         props.setProperty("validation.image.min.kb", String.valueOf(imageSizeThresholdKb));
         props.setProperty("validation.video.min.kb", String.valueOf(videoSizeThresholdKb));
         props.setProperty("performance.high.priority", String.valueOf(highPriorityMode));
+        props.setProperty("ui.dark.mode", String.valueOf(darkMode));
         props.setProperty("folder.pattern", folderPattern.name());
         props.setProperty("duplicate.policy", duplicatePolicy.name());
 
@@ -176,4 +180,15 @@ public class AppConfig {
         save();
     }
     public List<IgnoreRule> getIgnoreRules() { return ignoreRules; }
+
+    public boolean isDarkMode() { return darkMode; }
+    public void setDarkMode(boolean darkMode) {
+        this.darkMode = darkMode;
+        save();
+    }
+
+    public String getAppVersion() {
+        String version = AppConfig.class.getPackage().getImplementationVersion();
+        return (version != null && !version.isBlank()) ? version : "1.0.0";
+    }
 }

@@ -3,18 +3,15 @@ package com.mediascanner.ui;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.mediascanner.app.MediaScannerApp;
 import com.mediascanner.config.AppConfig;
 import com.mediascanner.db.Database;
 import com.mediascanner.db.JobStatisticsDao;
 import com.mediascanner.model.JobStatistics;
 import javafx.fxml.FXML;
-import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.stage.FileChooser;
-import javafx.stage.Stage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -186,14 +183,9 @@ public class SummaryController implements Initializable {
     }
 
     @FXML private void onStartNewScan() {
-        try {
-            FXMLLoader loader = new FXMLLoader(
-                getClass().getResource("/fxml/main.fxml"));
-            Parent root = loader.load();
-            Stage stage = (Stage) totalFoundLabel.getScene().getWindow();
-            stage.setScene(new Scene(root, 1000, 700));
-        } catch (Exception e) {
-            log.error("Failed to return to main: {}", e.getMessage());
+        ScreenNavigator nav = MediaScannerApp.getScreenNavigator();
+        if (nav != null) {
+            nav.navigateTo(ScreenNavigator.ScreenType.CONFIGURATION);
         }
     }
 

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.geometry.*?>
+
+<VBox xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.mediascanner.ui.AboutController"
+      prefWidth="360" prefHeight="280"
+      spacing="8" alignment="CENTER">
+    <padding><Insets top="24" right="24" bottom="24" left="24"/></padding>
+
+    <Label text="MediaScanner" style="-fx-font-size: 22px; -fx-font-weight: bold;"/>
+    <Label fx:id="versionLabel" text="Version 1.0.0" style="-fx-font-size: 14px;"/>
+    <Label text="" />
+    <Label text="High-performance media file organiser for macOS and Windows."
+           wrapText="true" alignment="CENTER" textAlignment="CENTER"/>
+    <Label text="" />
+    <Label text="© 2026 MediaScanner. All rights reserved."
+           style="-fx-font-size: 11px;" textAlignment="CENTER"/>
+    <Label text="" />
+    <Button text="Close" onAction="#onClose" styleClass="primary-button"/>
+</VBox>

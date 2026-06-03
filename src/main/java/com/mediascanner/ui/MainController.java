@@ -1,22 +1,17 @@
 package com.mediascanner.ui;
 
+import com.mediascanner.app.MediaScannerApp;
 import com.mediascanner.checkpoint.JobStateExporter;
 import com.mediascanner.config.AppConfig;
 import com.mediascanner.db.Database;
 import com.mediascanner.db.JobStatisticsDao;
-import com.mediascanner.engine.ScanEngine;
 import com.mediascanner.model.*;
-import com.mediascanner.monitor.ProgressTracker;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
-import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
-import javafx.stage.Stage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,12 +30,6 @@ public class MainController implements Initializable {
     @FXML private RadioButton moveRadio;
     @FXML private ComboBox<String> folderPatternCombo;
     @FXML private ComboBox<String> duplicatePolicyCombo;
-    @FXML private TextField imageSizeField;
-    @FXML private TextField videoSizeField;
-    @FXML private TextField threadCountField;
-    @FXML private CheckBox highPriorityCheck;
-    @FXML private ListView<String> ignorePatternsListView;
-    @FXML private TextField newPatternField;
     @FXML private Button startButton;
     @FXML private Label statusLabel;
 
@@ -51,7 +40,8 @@ public class MainController implements Initializable {
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
-        config = new AppConfig();
+        config = MediaScannerApp.getAppConfig();
+        if (config == null) config = new AppConfig();
         exporter = new JobStateExporter();
 
         copyRadio.setToggleGroup(transferModeGroup);
@@ -66,9 +56,7 @@ public class MainController implements Initializable {
             "Skip", "Move to /_duplicates", "Keep Both");
         duplicatePolicyCombo.setValue("Skip");
 
-        loadIgnorePatterns();
         checkStartButtonState();
-
         openDatabaseAndCheckResume();
     }
 
@@ -79,6 +67,11 @@ public class MainController implements Initializable {
                 if (database.isCorruptionWarning()) {
                     Platform.runLater(() -> showAlert("Database Warning",
                         "Hash cache lost — all files will be re-hashed this run."));
+                }
+                // Wire the hash index DAO to the menu bar controller
+                var menuBar = MediaScannerApp.getMenuBarController();
+                if (menuBar != null) {
+                    menuBar.setHashIndexDao(new com.mediascanner.db.HashIndexDao(database));
                 }
                 JobStatisticsDao dao = new JobStatisticsDao(database);
                 JobStatistics active = dao.findActiveJob();
@@ -100,6 +93,21 @@ public class MainController implements Initializable {
         Optional<ButtonType> result = alert.showAndWait();
         if (result.isPresent() && result.get() == ButtonType.OK) {
             statusLabel.setText("Import the job state file to resume.");
+        }
+    }
+
+    public void loadCheckpoint(CheckpointState state) {
+        if (state == null) return;
+        sourcePathField.setText(state.getSourcePath() != null ? state.getSourcePath() : "");
+        targetPathField.setText(state.getTargetPath() != null ? state.getTargetPath() : "");
+        checkStartButtonState();
+        statusLabel.setText("Loaded job " + state.getJobId()
+            + " (" + state.getProcessedFiles() + " files processed)");
+    }
+
+    public void triggerStartScan() {
+        if (!startButton.isDisabled()) {
+            onStartScan();
         }
     }
 
@@ -145,30 +153,25 @@ public class MainController implements Initializable {
         Job.FolderPattern pattern = mapFolderPattern(folderPatternCombo.getValue());
         Job.DuplicatePolicy policy = mapDuplicatePolicy(duplicatePolicyCombo.getValue());
 
-        int imgKb = parseIntSafe(imageSizeField.getText(), 10);
-        int vidKb = parseIntSafe(videoSizeField.getText(), 100);
-        int threads = parseIntSafe(threadCountField.getText(), 0);
-        boolean hiPri = highPriorityCheck.isSelected();
-
         Job job = Job.create(source, target, mode, pattern, policy,
-                             imgKb, vidKb, threads, hiPri, config.getIgnoreRules());
+                             config.getImageSizeThresholdKb(),
+                             config.getVideoSizeThresholdKb(),
+                             config.getWorkerThreadCount(),
+                             config.isHighPriorityMode(),
+                             config.getIgnoreRules());
 
         navigateToDashboard(job);
     }
 
     private void navigateToDashboard(Job job) {
-        try {
-            FXMLLoader loader = new FXMLLoader(
-                getClass().getResource("/fxml/dashboard.fxml"));
-            Parent root = loader.load();
-            DashboardController controller = loader.getController();
-            controller.init(job, database, config);
-
-            Stage stage = (Stage) startButton.getScene().getWindow();
-            stage.setScene(new Scene(root, 1200, 800));
-        } catch (Exception e) {
-            log.error("Failed to navigate to dashboard: {}", e.getMessage());
-            showAlert("Error", "Could not load dashboard: " + e.getMessage());
+        ScreenNavigator nav = MediaScannerApp.getScreenNavigator();
+        if (nav != null) {
+            Object ctrl = nav.navigateTo(ScreenNavigator.ScreenType.DASHBOARD);
+            if (ctrl instanceof DashboardController dc) {
+                dc.init(job, database, config);
+            }
+        } else {
+            showAlert("Error", "Navigation service unavailable.");
         }
     }
 
@@ -182,11 +185,7 @@ public class MainController implements Initializable {
             try {
                 CheckpointState state = exporter.importFrom(Paths.get(file.getAbsolutePath()));
                 if (state != null) {
-                    sourcePathField.setText(state.getSourcePath());
-                    targetPathField.setText(state.getTargetPath());
-                    checkStartButtonState();
-                    statusLabel.setText("Imported job " + state.getJobId()
-                        + " (" + state.getProcessedFiles() + " files processed)");
+                    loadCheckpoint(state);
                 } else {
                     showAlert("Import Failed", "Could not import: paths not accessible.");
                 }
@@ -194,29 +193,6 @@ public class MainController implements Initializable {
                 showAlert("Import Error", e.getMessage());
             }
         }
-    }
-
-    @FXML private void onAddIgnorePattern() {
-        String pattern = newPatternField.getText().trim();
-        if (!pattern.isEmpty()) {
-            config.addIgnorePattern(pattern);
-            ignorePatternsListView.getItems().add(pattern);
-            newPatternField.clear();
-        }
-    }
-
-    @FXML private void onRemoveIgnorePattern() {
-        String selected = ignorePatternsListView.getSelectionModel().getSelectedItem();
-        if (selected != null) {
-            config.removeIgnorePattern(selected);
-            ignorePatternsListView.getItems().remove(selected);
-        }
-    }
-
-    private void loadIgnorePatterns() {
-        ignorePatternsListView.getItems().clear();
-        config.getIgnoreRules().forEach(r ->
-            ignorePatternsListView.getItems().add(r.getPattern()));
     }
 
     private Job.FolderPattern mapFolderPattern(String value) {
@@ -233,11 +209,6 @@ public class MainController implements Initializable {
         if (value.startsWith("Move")) return Job.DuplicatePolicy.MOVE_TO_BUCKET;
         if (value.startsWith("Keep")) return Job.DuplicatePolicy.KEEP_BOTH;
         return Job.DuplicatePolicy.SKIP;
-    }
-
-    private int parseIntSafe(String text, int defaultValue) {
-        try { return Integer.parseInt(text.trim()); }
-        catch (NumberFormatException e) { return defaultValue; }
     }
 
     private void showAlert(String title, String message) {

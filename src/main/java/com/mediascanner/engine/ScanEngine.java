@@ -3,6 +3,7 @@ package com.mediascanner.engine;
 import com.mediascanner.checkpoint.CheckpointManager;
 import com.mediascanner.config.AppConfig;
 import com.mediascanner.db.Database;
+import com.mediascanner.engine.AppStateManager;
 import com.mediascanner.db.HashIndexDao;
 import com.mediascanner.db.JobStatisticsDao;
 import com.mediascanner.model.*;
@@ -51,6 +52,7 @@ public class ScanEngine {
         this.currentJob = job;
         this.pauseRequested = false;
         this.stopRequested = false;
+        AppStateManager.getInstance().setState(AppStateManager.AppState.RUNNING);
 
         int threadCount = job.getWorkerThreadCount() > 0
             ? job.getWorkerThreadCount() : config.getWorkerThreadCount();
@@ -99,9 +101,12 @@ public class ScanEngine {
         if (!stopRequested) {
             jobStatistics.setStatus("COMPLETED");
             jobStatisticsDao.markCompleted(job.getJobId(), LocalDateTime.now());
+            AppStateManager.getInstance().setState(AppStateManager.AppState.COMPLETED);
             log.info("Job {} completed. Processed: {}, Failed: {}, Skipped: {}",
                 job.getJobId(), jobStatistics.getFilesProcessed(),
                 jobStatistics.getFilesFailed(), jobStatistics.getFilesSkipped());
+        } else {
+            AppStateManager.getInstance().setState(AppStateManager.AppState.IDLE);
         }
     }
 
@@ -298,6 +303,7 @@ public class ScanEngine {
 
     public void pause() {
         pauseRequested = true;
+        AppStateManager.getInstance().setState(AppStateManager.AppState.PAUSED);
         if (currentJob != null) {
             try {
                 jobStatisticsDao.updateStatus(currentJob.getJobId(), "PAUSED");
@@ -310,6 +316,7 @@ public class ScanEngine {
 
     public void resume() {
         pauseRequested = false;
+        AppStateManager.getInstance().setState(AppStateManager.AppState.RUNNING);
         if (currentJob != null) {
             try {
                 jobStatisticsDao.updateStatus(currentJob.getJobId(), "RUNNING");

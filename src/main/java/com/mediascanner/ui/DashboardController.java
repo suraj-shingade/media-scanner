@@ -1,9 +1,10 @@
 package com.mediascanner.ui;
 
+import com.mediascanner.app.MediaScannerApp;
 import com.mediascanner.checkpoint.JobStateExporter;
 import com.mediascanner.config.AppConfig;
 import com.mediascanner.db.Database;
-import com.mediascanner.db.JobStatisticsDao;
+import com.mediascanner.engine.AppStateManager;
 import com.mediascanner.engine.ScanEngine;
 import com.mediascanner.model.CheckpointState;
 import com.mediascanner.model.Job;
@@ -14,13 +15,9 @@ import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
-import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
-import javafx.scene.Parent;
-import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.stage.FileChooser;
-import javafx.stage.Stage;
 import javafx.util.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,9 +77,24 @@ public class DashboardController implements Initializable {
         this.resourceMonitor = new ResourceMonitor();
         this.scanEngine = new ScanEngine(config, database, progressTracker);
 
+        // Register engine with menu bar controller so menu actions work
+        MenuBarController menuBar = MediaScannerApp.getMenuBarController();
+        if (menuBar != null) {
+            menuBar.setScanEngine(scanEngine);
+        }
+
+        // Track target path for Tools > View Failure Report
+        if (job.getTargetPath() != null) {
+            AppStateManager.getInstance().setLastJobTargetPath(job.getTargetPath());
+        }
+
         resourceMonitor.start();
         startRefreshTimeline();
         startScanAsync();
+    }
+
+    public ScanEngine getScanEngine() {
+        return scanEngine;
     }
 
     private void startRefreshTimeline() {
@@ -150,18 +162,12 @@ public class DashboardController implements Initializable {
     }
 
     private void navigateToSummary() {
-        try {
-            FXMLLoader loader = new FXMLLoader(
-                getClass().getResource("/fxml/summary.fxml"));
-            Parent root = loader.load();
-            SummaryController controller = loader.getController();
-            JobStatistics stats = scanEngine.getJobStatistics();
-            controller.init(stats, database, config, job.getTargetPath());
-
-            Stage stage = (Stage) processedLabel.getScene().getWindow();
-            stage.setScene(new Scene(root, 900, 700));
-        } catch (Exception e) {
-            log.error("Failed to navigate to summary: {}", e.getMessage());
+        ScreenNavigator nav = MediaScannerApp.getScreenNavigator();
+        if (nav != null) {
+            Object ctrl = nav.navigateTo(ScreenNavigator.ScreenType.SUMMARY);
+            if (ctrl instanceof SummaryController sc) {
+                sc.init(scanEngine.getJobStatistics(), database, config, job.getTargetPath());
+            }
         }
     }
 

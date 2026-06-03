@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediaScanner User Guide</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+               max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; }
+        h1 { color: #2c3e50; }
+        h2 { color: #34495e; border-bottom: 1px solid #ecf0f1; padding-bottom: 4px; }
+        table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+        th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+        th { background: #f8f9fa; }
+        code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+<h1>MediaScanner User Guide</h1>
+<p>MediaScanner is a high-performance desktop application for organising media files by date.</p>
+
+<h2>Getting Started</h2>
+<ol>
+    <li>Select a <strong>Source Directory</strong> containing your media files.</li>
+    <li>Select a <strong>Target Directory</strong> where organised files will be placed.</li>
+    <li>Choose a <strong>Transfer Mode</strong>: Copy (safe) or Move.</li>
+    <li>Click <strong>Start Scan</strong> or use <code>⌘↵</code> / <code>Ctrl+Enter</code>.</li>
+</ol>
+
+<h2>Menu Bar</h2>
+<h3>File Menu</h3>
+<ul>
+    <li><strong>New Scan</strong> — Reset and return to configuration (<code>⌘N</code>)</li>
+    <li><strong>Open Job State…</strong> — Resume from a saved checkpoint (<code>⌘O</code>)</li>
+    <li><strong>Quit</strong> — Exit the application (<code>⌘Q</code>)</li>
+</ul>
+
+<h3>Job Menu</h3>
+<ul>
+    <li><strong>Start Scan</strong> — Begin processing (<code>⌘↵</code>)</li>
+    <li><strong>Pause</strong> — Suspend the running scan (<code>⌘P</code>)</li>
+    <li><strong>Resume</strong> — Continue a paused scan (<code>⌘R</code>)</li>
+    <li><strong>Stop</strong> — Stop the scan and go to Summary (<code>⌘.</code>)</li>
+    <li><strong>Export Job State…</strong> — Save a checkpoint to resume later (<code>⌘E</code>)</li>
+</ul>
+
+<h3>View Menu</h3>
+<ul>
+    <li><strong>Configuration</strong> — Go to the scan setup screen (<code>⌘1</code>)</li>
+    <li><strong>Dashboard</strong> — Go to the live progress screen (<code>⌘2</code>)</li>
+    <li><strong>Summary</strong> — View the completed job summary (<code>⌘3</code>)</li>
+    <li><strong>Toggle Dark Mode</strong> — Switch between light and dark themes (<code>⌘D</code>)</li>
+</ul>
+
+<h3>Tools Menu</h3>
+<ul>
+    <li><strong>View Failure Report</strong> — Open the failure report for the last job</li>
+    <li><strong>Open Log File</strong> — Open the application log</li>
+    <li><strong>Clear Hash Cache…</strong> — Force re-hashing of all files on the next scan</li>
+</ul>
+
+<h2>Keyboard Shortcuts</h2>
+<table>
+    <tr><th>Action</th><th>macOS</th><th>Windows/Linux</th></tr>
+    <tr><td>New Scan</td><td>⌘N</td><td>Ctrl+N</td></tr>
+    <tr><td>Open Job State</td><td>⌘O</td><td>Ctrl+O</td></tr>
+    <tr><td>Preferences</td><td>⌘,</td><td>Ctrl+,</td></tr>
+    <tr><td>Quit</td><td>⌘Q</td><td>Ctrl+Q</td></tr>
+    <tr><td>Start Scan</td><td>⌘↵</td><td>Ctrl+Enter</td></tr>
+    <tr><td>Pause</td><td>⌘P</td><td>Ctrl+P</td></tr>
+    <tr><td>Resume</td><td>⌘R</td><td>Ctrl+R</td></tr>
+    <tr><td>Stop</td><td>⌘.</td><td>Ctrl+.</td></tr>
+    <tr><td>Export Job State</td><td>⌘E</td><td>Ctrl+E</td></tr>
+    <tr><td>Configuration screen</td><td>⌘1</td><td>Ctrl+1</td></tr>
+    <tr><td>Dashboard screen</td><td>⌘2</td><td>Ctrl+2</td></tr>
+    <tr><td>Summary screen</td><td>⌘3</td><td>Ctrl+3</td></tr>
+    <tr><td>Toggle Dark Mode</td><td>⌘D</td><td>Ctrl+D</td></tr>
+    <tr><td>User Guide</td><td>F1</td><td>F1</td></tr>
+</table>
+
+<h2>Preferences</h2>
+<p>Open via <strong>Edit → Preferences…</strong> (<code>⌘,</code>) to configure:</p>
+<ul>
+    <li><strong>Performance</strong>: Worker thread count, High-Priority Mode</li>
+    <li><strong>Validation</strong>: Minimum file size thresholds for images and videos</li>
+    <li><strong>Organisation</strong>: Default folder pattern and duplicate policy</li>
+    <li><strong>Ignore Patterns</strong>: File patterns to skip during scanning</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.geometry.*?>
+
+<VBox xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="com.mediascanner.ui.PreferencesController"
+      prefWidth="480" spacing="12">
+    <padding><Insets top="16" right="16" bottom="16" left="16"/></padding>
+
+    <TabPane>
+        <!-- Performance Tab -->
+        <Tab text="Performance" closable="false">
+            <VBox spacing="12">
+                <padding><Insets top="12" right="12" bottom="12" left="12"/></padding>
+                <HBox spacing="12" alignment="CENTER_LEFT">
+                    <Label text="Worker threads (min 1):" minWidth="200"/>
+                    <TextField fx:id="threadCountField" prefWidth="80"/>
+                </HBox>
+                <CheckBox fx:id="highPriorityCheck" text="High-Priority Mode"/>
+            </VBox>
+        </Tab>
+
+        <!-- Validation Tab -->
+        <Tab text="Validation" closable="false">
+            <VBox spacing="12">
+                <padding><Insets top="12" right="12" bottom="12" left="12"/></padding>
+                <HBox spacing="12" alignment="CENTER_LEFT">
+                    <Label text="Image min size (KB):" minWidth="200"/>
+                    <TextField fx:id="imageSizeField" prefWidth="80"/>
+                </HBox>
+                <HBox spacing="12" alignment="CENTER_LEFT">
+                    <Label text="Video min size (KB):" minWidth="200"/>
+                    <TextField fx:id="videoSizeField" prefWidth="80"/>
+                </HBox>
+            </VBox>
+        </Tab>
+
+        <!-- Organisation Tab -->
+        <Tab text="Organisation" closable="false">
+            <VBox spacing="12">
+                <padding><Insets top="12" right="12" bottom="12" left="12"/></padding>
+                <HBox spacing="12" alignment="CENTER_LEFT">
+                    <Label text="Default folder pattern:" minWidth="200"/>
+                    <ComboBox fx:id="folderPatternCombo" prefWidth="160"/>
+                </HBox>
+                <HBox spacing="12" alignment="CENTER_LEFT">
+                    <Label text="Default duplicate policy:" minWidth="200"/>
+                    <ComboBox fx:id="duplicatePolicyCombo" prefWidth="200"/>
+                </HBox>
+            </VBox>
+        </Tab>
+
+        <!-- Ignore Patterns Tab -->
+        <Tab text="Ignore Patterns" closable="false">
+            <VBox spacing="8">
+                <padding><Insets top="12" right="12" bottom="12" left="12"/></padding>
+                <Label text="User-defined ignore patterns:"/>
+                <ListView fx:id="ignorePatternsListView" prefHeight="140"/>
+                <HBox spacing="8">
+                    <TextField fx:id="newPatternField" HBox.hgrow="ALWAYS" promptText="e.g. *.tmp"/>
+                    <Button text="Add" onAction="#onAddPattern"/>
+                    <Button text="Remove" onAction="#onRemovePattern"/>
+                </HBox>
+            </VBox>
+        </Tab>
+    </TabPane>
+
+    <HBox spacing="8" alignment="CENTER_RIGHT">
+        <Button text="Cancel" onAction="#onCancel"/>
+        <Button text="OK" styleClass="primary-button" onAction="#onOk"/>
+    </HBox>
+</VBox>

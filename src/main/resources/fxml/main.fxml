@@ -26,8 +26,7 @@
                     <HBox spacing="8">
                         <TextField fx:id="sourcePathField" HBox.hgrow="ALWAYS"
                                    promptText="Select source folder..." editable="false"/>
-                        <Button text="Browse..." fx:id="sourceBrowseButton"
-                                onAction="#onBrowseSource"/>
+                        <Button text="Browse..." onAction="#onBrowseSource"/>
                     </HBox>
                 </VBox>
 
@@ -37,8 +36,7 @@
                     <HBox spacing="8">
                         <TextField fx:id="targetPathField" HBox.hgrow="ALWAYS"
                                    promptText="Select target folder..." editable="false"/>
-                        <Button text="Browse..." fx:id="targetBrowseButton"
-                                onAction="#onBrowseTarget"/>
+                        <Button text="Browse..." onAction="#onBrowseTarget"/>
                     </HBox>
                 </VBox>
 
@@ -66,40 +64,6 @@
                     <ComboBox fx:id="duplicatePolicyCombo" prefWidth="250"
                               onAction="#onDuplicatePolicyChanged"/>
                 </VBox>
-
-                <!-- Settings Toggle -->
-                <TitledPane fx:id="settingsPane" text="Advanced Settings" expanded="false">
-                    <VBox spacing="12">
-                        <padding><Insets top="12" right="12" bottom="12" left="12"/></padding>
-
-                        <!-- Size Thresholds -->
-                        <HBox spacing="16" alignment="CENTER_LEFT">
-                            <Label text="Image min size (KB):"/>
-                            <TextField fx:id="imageSizeField" prefWidth="80" text="10"/>
-                            <Label text="Video min size (KB):"/>
-                            <TextField fx:id="videoSizeField" prefWidth="80" text="100"/>
-                        </HBox>
-
-                        <!-- Thread Count -->
-                        <HBox spacing="16" alignment="CENTER_LEFT">
-                            <Label text="Worker threads (0 = CPU×2):"/>
-                            <TextField fx:id="threadCountField" prefWidth="80" text="0"/>
-                            <CheckBox fx:id="highPriorityCheck" text="High-Priority Mode"/>
-                        </HBox>
-
-                        <!-- Ignore Patterns -->
-                        <VBox spacing="6">
-                            <Label text="Ignore Patterns:"/>
-                            <ListView fx:id="ignorePatternsListView" prefHeight="120"/>
-                            <HBox spacing="8">
-                                <TextField fx:id="newPatternField" HBox.hgrow="ALWAYS"
-                                           promptText="e.g. *.tmp"/>
-                                <Button text="Add" onAction="#onAddIgnorePattern"/>
-                                <Button text="Remove" onAction="#onRemoveIgnorePattern"/>
-                            </HBox>
-                        </VBox>
-                    </VBox>
-                </TitledPane>
 
                 <!-- Action Buttons -->
                 <HBox spacing="12" alignment="CENTER_RIGHT">
