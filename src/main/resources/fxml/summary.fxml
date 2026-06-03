@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.geometry.*?>
+
+<BorderPane xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.mediascanner.ui.SummaryController"
+            prefWidth="900" prefHeight="700">
+
+    <top>
+        <VBox styleClass="header-bar">
+            <padding><Insets top="12" right="16" bottom="12" left="16"/></padding>
+            <Label text="Job Summary" styleClass="app-title"/>
+        </VBox>
+    </top>
+
+    <center>
+        <ScrollPane fitToWidth="true">
+            <VBox spacing="16">
+                <padding><Insets top="20" right="24" bottom="20" left="24"/></padding>
+
+                <!-- Files Summary -->
+                <TitledPane text="Files Summary" expanded="true">
+                    <GridPane hgap="12" vgap="8">
+                        <padding><Insets top="8" right="8" bottom="8" left="8"/></padding>
+                        <Label text="Total Found:" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                        <Label fx:id="totalFoundLabel" text="0" GridPane.columnIndex="1" GridPane.rowIndex="0"/>
+                        <Label text="Transferred:" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+                        <Label fx:id="transferredLabel" text="0" GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+                        <Label text="Failed:" GridPane.columnIndex="0" GridPane.rowIndex="2"/>
+                        <Label fx:id="failedLabel" text="0" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+                        <Label text="Skipped:" GridPane.columnIndex="0" GridPane.rowIndex="3"/>
+                        <Label fx:id="skippedLabel" text="0" GridPane.columnIndex="1" GridPane.rowIndex="3"/>
+                        <Label text="Duplicates:" GridPane.columnIndex="0" GridPane.rowIndex="4"/>
+                        <Label fx:id="duplicatesLabel" text="0" GridPane.columnIndex="1" GridPane.rowIndex="4"/>
+                        <Label text="Empty Files:" GridPane.columnIndex="0" GridPane.rowIndex="5"/>
+                        <Label fx:id="emptyLabel" text="0" GridPane.columnIndex="1" GridPane.rowIndex="5"/>
+                        <Label text="Small Files:" GridPane.columnIndex="0" GridPane.rowIndex="6"/>
+                        <Label fx:id="smallLabel" text="0" GridPane.columnIndex="1" GridPane.rowIndex="6"/>
+                        <Label text="Corrupt Files:" GridPane.columnIndex="0" GridPane.rowIndex="7"/>
+                        <Label fx:id="corruptLabel" text="0" GridPane.columnIndex="1" GridPane.rowIndex="7"/>
+                        <Label text="Folders Created:" GridPane.columnIndex="0" GridPane.rowIndex="8"/>
+                        <Label fx:id="foldersLabel" text="0" GridPane.columnIndex="1" GridPane.rowIndex="8"/>
+                    </GridPane>
+                </TitledPane>
+
+                <!-- Data Summary -->
+                <TitledPane text="Data Summary" expanded="true">
+                    <GridPane hgap="12" vgap="8">
+                        <padding><Insets top="8" right="8" bottom="8" left="8"/></padding>
+                        <Label text="Total Processed:" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                        <Label fx:id="totalBytesLabel" text="0 B" GridPane.columnIndex="1" GridPane.rowIndex="0"/>
+                        <Label text="Copied:" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+                        <Label fx:id="bytesCopiedLabel" text="0 B" GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+                        <Label text="Moved:" GridPane.columnIndex="0" GridPane.rowIndex="2"/>
+                        <Label fx:id="bytesMovedLabel" text="0 B" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+                        <Label text="Duplicate Savings:" GridPane.columnIndex="0" GridPane.rowIndex="3"/>
+                        <Label fx:id="dupSavingsLabel" text="0 B" GridPane.columnIndex="1" GridPane.rowIndex="3"/>
+                    </GridPane>
+                </TitledPane>
+
+                <!-- Performance Summary -->
+                <TitledPane text="Performance Summary" expanded="true">
+                    <GridPane hgap="12" vgap="8">
+                        <padding><Insets top="8" right="8" bottom="8" left="8"/></padding>
+                        <Label text="Avg Files/sec:" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                        <Label fx:id="avgFpsLabel" text="0" GridPane.columnIndex="1" GridPane.rowIndex="0"/>
+                        <Label text="Peak Files/sec:" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+                        <Label fx:id="peakFpsLabel" text="0" GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+                        <Label text="Avg MB/sec:" GridPane.columnIndex="0" GridPane.rowIndex="2"/>
+                        <Label fx:id="avgMbsLabel" text="0" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+                        <Label text="Peak MB/sec:" GridPane.columnIndex="0" GridPane.rowIndex="3"/>
+                        <Label fx:id="peakMbsLabel" text="0" GridPane.columnIndex="1" GridPane.rowIndex="3"/>
+                    </GridPane>
+                </TitledPane>
+
+                <!-- Execution Summary -->
+                <TitledPane text="Execution Summary" expanded="true">
+                    <GridPane hgap="12" vgap="8">
+                        <padding><Insets top="8" right="8" bottom="8" left="8"/></padding>
+                        <Label text="Job ID:" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                        <Label fx:id="jobIdLabel" text="" GridPane.columnIndex="1" GridPane.rowIndex="0"/>
+                        <Label text="Start Time:" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+                        <Label fx:id="startTimeLabel" text="" GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+                        <Label text="End Time:" GridPane.columnIndex="0" GridPane.rowIndex="2"/>
+                        <Label fx:id="endTimeLabel" text="" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+                        <Label text="Duration:" GridPane.columnIndex="0" GridPane.rowIndex="3"/>
+                        <Label fx:id="durationLabel" text="" GridPane.columnIndex="1" GridPane.rowIndex="3"/>
+                    </GridPane>
+                </TitledPane>
+
+            </VBox>
+        </ScrollPane>
+    </center>
+
+    <bottom>
+        <HBox spacing="12" alignment="CENTER_RIGHT">
+            <padding><Insets top="8" right="16" bottom="8" left="16"/></padding>
+            <Button text="View Failure Report" onAction="#onViewFailureReport"/>
+            <Button text="Export JSON" onAction="#onExportJson"/>
+            <Button text="Export Text" onAction="#onExportText"/>
+            <Button text="Start New Scan" onAction="#onStartNewScan"/>
+        </HBox>
+    </bottom>
+</BorderPane>

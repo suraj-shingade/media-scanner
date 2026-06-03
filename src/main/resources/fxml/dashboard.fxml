@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.geometry.*?>
+
+<BorderPane xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.mediascanner.ui.DashboardController"
+            prefWidth="1200" prefHeight="800">
+
+    <top>
+        <VBox styleClass="header-bar">
+            <padding><Insets top="12" right="16" bottom="12" left="16"/></padding>
+            <HBox spacing="16" alignment="CENTER_LEFT">
+                <Label text="MediaScanner — Live Dashboard" styleClass="app-title" HBox.hgrow="ALWAYS"/>
+                <Button fx:id="pauseButton" text="Pause" onAction="#onPause"/>
+                <Button fx:id="resumeButton" text="Resume" onAction="#onResume" disable="true"/>
+                <Button fx:id="stopButton" text="Stop" onAction="#onStop"/>
+                <Button fx:id="exportStateButton" text="Export State" onAction="#onExportState"/>
+            </HBox>
+        </VBox>
+    </top>
+
+    <center>
+        <ScrollPane fitToWidth="true">
+            <GridPane hgap="16" vgap="16">
+                <padding><Insets top="20" right="24" bottom="20" left="24"/></padding>
+
+                <!-- File Stats Panel -->
+                <VBox GridPane.columnIndex="0" GridPane.rowIndex="0" spacing="6"
+                      styleClass="stats-panel">
+                    <Label text="File Statistics" styleClass="panel-title"/>
+                    <HBox spacing="8"><Label text="Total Found:"/><Label fx:id="totalFoundLabel" text="0"/></HBox>
+                    <HBox spacing="8"><Label text="Processed:"/><Label fx:id="processedLabel" text="0"/></HBox>
+                    <HBox spacing="8"><Label text="Remaining:"/><Label fx:id="remainingLabel" text="0"/></HBox>
+                    <HBox spacing="8"><Label text="Copied:"/><Label fx:id="copiedLabel" text="0"/></HBox>
+                    <HBox spacing="8"><Label text="Moved:"/><Label fx:id="movedLabel" text="0"/></HBox>
+                    <HBox spacing="8"><Label text="Skipped:"/><Label fx:id="skippedLabel" text="0"/></HBox>
+                    <HBox spacing="8"><Label text="Failed:"/><Label fx:id="failedLabel" text="0"/></HBox>
+                    <HBox spacing="8"><Label text="Duplicates:"/><Label fx:id="duplicatesLabel" text="0"/></HBox>
+                    <ProgressBar fx:id="progressBar" prefWidth="300"/>
+                </VBox>
+
+                <!-- Data Transfer Panel -->
+                <VBox GridPane.columnIndex="1" GridPane.rowIndex="0" spacing="6"
+                      styleClass="stats-panel">
+                    <Label text="Data Transfer" styleClass="panel-title"/>
+                    <HBox spacing="8"><Label text="Total Processed:"/><Label fx:id="totalBytesLabel" text="0 B"/></HBox>
+                    <HBox spacing="8"><Label text="Copied:"/><Label fx:id="bytesCopiedLabel" text="0 B"/></HBox>
+                    <HBox spacing="8"><Label text="Moved:"/><Label fx:id="bytesMovedLabel" text="0 B"/></HBox>
+                    <HBox spacing="8"><Label text="Skipped:"/><Label fx:id="bytesSkippedLabel" text="0 B"/></HBox>
+                    <HBox spacing="8"><Label text="Duplicate Savings:"/><Label fx:id="dupSavingsLabel" text="0 B"/></HBox>
+                </VBox>
+
+                <!-- Throughput Panel -->
+                <VBox GridPane.columnIndex="0" GridPane.rowIndex="1" spacing="6"
+                      styleClass="stats-panel">
+                    <Label text="Throughput" styleClass="panel-title"/>
+                    <HBox spacing="8"><Label text="5s avg files/sec:"/><Label fx:id="fps5sLabel" text="0"/></HBox>
+                    <HBox spacing="8"><Label text="30s avg files/sec:"/><Label fx:id="fps30sLabel" text="0"/></HBox>
+                    <HBox spacing="8"><Label text="Job avg files/sec:"/><Label fx:id="fpsJobLabel" text="0"/></HBox>
+                    <HBox spacing="8"><Label text="MB/sec:"/><Label fx:id="mbsLabel" text="0 MB/s"/></HBox>
+                    <HBox spacing="8"><Label text="ETA:"/><Label fx:id="etaLabel" text="--:--:--"/></HBox>
+                </VBox>
+
+                <!-- Resource Utilization Panel -->
+                <VBox GridPane.columnIndex="1" GridPane.rowIndex="1" spacing="6"
+                      styleClass="stats-panel">
+                    <Label text="Resource Utilization" styleClass="panel-title"/>
+                    <HBox spacing="8"><Label text="CPU %:"/><Label fx:id="cpuLabel" text="0%"/></HBox>
+                    <HBox spacing="8"><Label text="Memory (GB):"/><Label fx:id="memoryLabel" text="0 GB"/></HBox>
+                    <HBox spacing="8"><Label text="Active Threads:"/><Label fx:id="threadsLabel" text="0"/></HBox>
+                </VBox>
+
+            </GridPane>
+        </ScrollPane>
+    </center>
+
+    <bottom>
+        <Label fx:id="statusLabel" text="Running..."
+               style="-fx-padding: 6 16 6 16; -fx-background-color: #f0f0f0;"/>
+    </bottom>
+</BorderPane>

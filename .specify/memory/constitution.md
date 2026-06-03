@@ -1,50 +1,356 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+SYNC IMPACT REPORT
+==================
+Version Change: 1.0.0 → 1.1.0 (MINOR — new sections added; BRD fully ingested; tracker rebuilt)
+Modified Principles:
+  - I. Performance-First Architecture → expanded with Java 21 + JavaFX 21 stack, NFR thread rules,
+    High-Priority Mode (NFR-005), and RAM caching mandate (NFR-004)
+  - II. Context Preservation and Resume Support → clarified checkpoint cadence (1000 files OR 60 s),
+    JSON state format codified (FR-014), background execution added (FR-021)
+  - IV. Observability → FR-031 historical throughput graph added; disk read/write MB/sec added
+  - V. Duplicate Handling → FR-009 filename-collision variant distinguished from hash-duplicate
+Added Sections:
+  - VII. Media Validation and File Quality Gates (FR-010, FR-011, FR-012, FR-013, FR-020)
+  - VIII. Folder Organization and Transfer Discipline (FR-001–FR-009)
+  - Technology Stack Reference (canonical stack locked from BRD)
+  - FR Traceability Matrix (FR-001 through FR-031 mapped to principles)
+Updated Templates:
+  - .specify/templates/plan-template.md  ✅ Constitution Check gates still valid; stack fields now pre-filled by convention
+  - .specify/templates/spec-template.md  ✅ No structural changes required; NFR section guidance added in comments
+  - .specify/templates/tasks-template.md ✅ No structural changes required; media-validation task type implied by Phase 2
+Deferred TODOs:
+  - None remaining — FR-001–FR-022 fully captured from MediaScanner BRD.docx
+  - Phase 2 enhancements (SHA-256 dedup, GPS, AI similarity, Watch Folder, Cloud) are explicitly
+    deferred per BRD "Future Enhancements" section; no constitution principle covers them yet
+-->
+
+# MediaScanner Constitution
+
+## Technology Stack Reference
+
+This stack is locked from the Business Requirements Document and MUST be used for all implementation.
+Proposing an alternative requires a constitution amendment with explicit justification.
+
+| Layer | Technology |
+|-------|-----------|
+| Runtime | Java 21 LTS |
+| Desktop UI | JavaFX 21 + ControlsFX + MaterialFX |
+| Metadata Extraction | Apache Tika + Metadata Extractor |
+| Video Metadata | FFmpeg + FFprobe |
+| JSON Processing | Jackson |
+| Database | SQLite (via JDBC) |
+| Logging | SLF4J + Logback |
+| Build | Maven |
+| Packaging | jpackage |
+| Target OS | Windows 10+, Windows 11, macOS |
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Performance-First Architecture
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+All code paths that touch file I/O, hashing, or metadata extraction MUST be designed for
+maximum throughput from the start. Retrofitting performance onto a correct-but-slow design
+is not acceptable.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+Non-negotiable rules:
+- Parallel worker threads MUST be used for all disk-intensive operations (scan, hash, copy/move).
+  Default thread count is `CPU cores × 2`; user override MUST be supported (NFR-003).
+- SHA-256 computation MUST leverage parallel worker threads; results MUST be persisted in SQLite
+  to avoid redundant recalculation across runs (FR-023, FR-024).
+- Smart tiered hashing MUST be applied for large video files: Stage 1 (size + name) →
+  Stage 2 (partial block hash) → Stage 3 (full SHA-256) to avoid unnecessary full-file reads
+  (FR-025).
+- Available RAM MUST be leveraged aggressively for metadata caching, file queueing, and
+  destination caching (NFR-004).
+- High-Priority Mode MUST be implemented: on Windows request `HIGH_PRIORITY_CLASS`; on macOS
+  request increased scheduling priority where permitted (NFR-005).
+- Target throughput baselines on reference hardware (16-core CPU, 64 GB RAM, NVMe SSD):
+  - Small files:   200–1 000 files/sec
+  - Mixed media:   100–500 files/sec
+  - Large video:   1–20 GB/sec disk throughput
+- Memory and CPU budgets MUST be tracked per-run; no operation may leak resources across
+  job boundaries.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+Rationale: The system targets 10 M+ file archives and 20+ TB datasets (NFR-001, NFR-002).
+Any design that does not account for this scale from day one will require full rewrites.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### II. Context Preservation and Resume Support
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+Every long-running operation MUST be checkpointable and resumable with zero data loss.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+Non-negotiable rules:
+- Job state MUST be persisted to JSON every 1 000 files OR every 60 seconds, whichever
+  comes first (NFR-006, FR-014). The JSON schema is the canonical checkpoint format:
+  `{ "jobId", "status", "sourcePath", "targetPath", "processedFiles", "failedFiles",
+  "skippedFiles", "emptyFiles", "smallFiles", "checkpointTime" }`.
+- SQLite checkpoint MUST be written within 100 ms of each significant state change.
+- On startup, the system MUST detect an interrupted prior run and offer automatic resume
+  within 5 seconds (FR-022, NFR resume SLA).
+- Users MUST be able to manually Pause (FR-016), Resume (FR-017), and Stop (FR-018) jobs
+  at any time. Stop MUST terminate safely with no file corruption.
+- Job state MUST be exportable and importable so sessions can be transferred across machines
+  (FR-015).
+- All processed-file state (path, hash, outcome) MUST be written atomically so a crash
+  mid-job never leaves the index in a corrupt or ambiguous state.
+- The application MUST continue running in the background while processing (FR-021).
+- The development tracker (`.specify/memory/tracker.md`) MUST be updated at each milestone,
+  phase boundary, and after each session so work can be resumed without loss of context.
+- Agent context files MUST accurately reflect the current implementation state at all times.
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+Rationale: Users run multi-hour jobs over enormous archives. Any interruption that requires
+restarting from scratch is unacceptable. The same discipline applies to development sessions:
+losing AI coding context mid-feature costs time and introduces inconsistency.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### III. SQLite as the Single Source of Truth
+
+All persistent job state MUST live in SQLite. No ephemeral in-memory-only state may be used
+as the authoritative record for a running or resumable job.
+
+Non-negotiable rules:
+- `FILE_HASH_INDEX` table MUST contain: ID (BIGINT), FILE_PATH (TEXT), FILE_NAME (TEXT),
+  FILE_SIZE (BIGINT), SHA256_HASH (VARCHAR 64), MEDIA_DATE (TIMESTAMP), CREATED_AT (TIMESTAMP)
+  with a UNIQUE index on SHA256_HASH.
+- `JOB_STATISTICS` table MUST contain: JOB_ID (VARCHAR), FILES_PROCESSED (BIGINT),
+  FILES_FAILED (BIGINT), FILES_SKIPPED (BIGINT), DUPLICATES_FOUND (BIGINT),
+  TOTAL_BYTES_PROCESSED (BIGINT), TOTAL_BYTES_MOVED (BIGINT), TOTAL_BYTES_COPIED (BIGINT),
+  AVG_MB_PER_SEC (DOUBLE), PEAK_MB_PER_SEC (DOUBLE), AVG_FILES_PER_SEC (DOUBLE),
+  PEAK_FILES_PER_SEC (DOUBLE).
+- All schema changes MUST be versioned migrations; no destructive ALTER TABLE without a
+  migration script.
+- Queries against the index MUST use indexed columns; full-table scans on large datasets
+  are a constitutional violation requiring explicit justification.
+
+Rationale: SQLite provides atomic writes, crash recovery, and cross-session persistence
+without the overhead of a server database. It is the right tool at this scale.
+
+### IV. Observability and Real-Time Monitoring
+
+The system MUST expose live operational metrics at all times during execution. Silent
+processing with no feedback is not acceptable.
+
+Non-negotiable rules:
+- A real-time progress dashboard MUST display (FR-026):
+  total files found, files processed, files remaining, files copied, files moved,
+  files skipped, files failed, and duplicate files detected.
+- Data transfer statistics MUST display in auto-scaled units (B/KB/MB/GB/TB) for:
+  total data processed, total data copied, total data moved, total data skipped,
+  and total duplicate data saved (FR-027).
+- Throughput MUST be reported as files/sec AND MB/sec (or GB/sec) with rolling averages
+  over 5 s, 30 s, and the entire job (FR-028).
+- ETA MUST be calculated from current throughput × remaining files + bytes (FR-029).
+- Resource utilization MUST be visible during a run: CPU %, memory GB, disk read/write
+  MB/sec, and active worker thread count (FR-030).
+- Historical throughput metrics (files/sec, MB/sec, CPU %, memory %) MUST be tracked for
+  performance troubleshooting and optimization (FR-031).
+- End-of-job summary MUST include: total files found/processed/copied/moved/skipped/failed/
+  duplicate, total data scanned/copied/moved/skipped/duplicate-saved, peak and average
+  files/sec, peak and average MB/sec, peak and average GB/sec, average and peak CPU %,
+  average and peak memory, start time, end time, total duration, and total folders created.
+
+Rationale: Users managing TB-scale archives need confidence the job is progressing correctly.
+Silent failures or stalled progress discovered hours later are not acceptable outcomes.
+
+### V. Duplicate Handling is a First-Class Feature
+
+Duplicate detection MUST be correct, configurable, and non-destructive by default.
+Two distinct duplicate types exist and MUST be handled separately.
+
+Non-negotiable rules:
+- **Filename collision** (FR-009): When a file with the same name exists at the target,
+  rename with sequential suffix: `IMG001.jpg` → `IMG001(1).jpg` → `IMG001(2).jpg`.
+- **Content duplicate** (hash-based, FR-023): SHA-256 determines true duplicates. Three
+  configurable policies MUST be supported:
+  - Skip (default) — do not write the duplicate.
+  - Move to `/_duplicates` bucket.
+  - Keep Both — rename with `_DUP_N` suffix.
+- Duplicate report MUST track: count, size saved, file locations, and hash values (FR-023).
+- The hash index MUST be consulted before any file is written to the target archive.
+- No source file MUST ever be deleted as a side effect of duplicate detection.
+
+Rationale: Data loss through silent deduplication is catastrophic for archival use cases.
+Correctness of duplicate handling takes precedence over throughput.
+
+### VI. Media Validation and File Quality Gates
+
+Every file MUST pass a quality gate before being transferred. Silent acceptance of empty,
+corrupt, or irrelevant files pollutes the archive.
+
+Non-negotiable rules:
+- **Empty file detection** (FR-010): Files with size = 0 bytes MUST be skipped, logged,
+  and added to the skipped bucket with reason "empty file".
+- **Small file detection** (FR-011): Images < 10 KB and videos < 100 KB MUST be skipped
+  by default. Thresholds MUST be user-configurable. Reason: "small file".
+- **Corrupt media detection** (FR-012): Files that cannot be read as valid media (invalid
+  JPEG, damaged PNG, corrupted MP4, incomplete MOV) MUST be skipped and recorded in the
+  failure bucket (FR-019) with the specific failure reason.
+- **Ignore rules** (FR-013): User-configurable pattern list (default includes `Thumbs.db`,
+  `.DS_Store`, `desktop.ini`, `._*`, `.cache`, `.tmp`, `.temp`) MUST be applied before
+  any processing.
+- **Failure bucket** (FR-019): All failed files MUST be recorded to `/_failures` with a
+  `failure-report.json` listing path and reason.
+- **Skipped bucket** (FR-020): All skipped files MUST be tracked separately with reasons:
+  empty file, small file, unsupported format, ignore rule matched, metadata missing.
+- All skipped and failed counts MUST appear in the real-time dashboard and end-of-job summary.
+
+Rationale: Large media collections inevitably contain corrupt, empty, and system files.
+Silently transferring them degrades archive quality and wastes storage.
+
+### VII. Folder Organization and Transfer Discipline
+
+File organization MUST follow a deterministic, date-based scheme. The transfer mechanism
+MUST be safe, atomic where possible, and user-controlled.
+
+Non-negotiable rules:
+- Source directory selection (FR-001) and target directory selection (FR-002) MUST be
+  user-provided via the desktop UI; no defaults that silently write to unexpected paths.
+- Media type support MUST cover (FR-003):
+  - Images: jpg, jpeg, png, gif, webp, bmp, tif, tiff, heic, raw, cr2, nef, arw, dng
+  - Videos: mp4, mov, avi, mkv, webm, mts, m4v, 3gp
+- Transfer mode MUST be user-selectable (FR-004): Copy (preserve originals) or Move
+  (delete originals only after confirmed successful transfer).
+- Scanning MUST be fully recursive through all subfolders (FR-005).
+- Metadata extraction MUST attempt in priority order (FR-006): (1) Media capture date,
+  (2) file creation date, (3) file modified date.
+- All dates MUST be normalized to ISO 8601 format (e.g., `2025-04-15T18:22:01`) (FR-007).
+- Default folder structure MUST be `/yyyy/MMM`; configurable alternatives MUST include
+  `/yyyy/MM`, `/yyyy/MMM/dd`, `/yyyy/MM/dd` (FR-008).
+
+Rationale: Deterministic folder structure is the core user value proposition. Ambiguity in
+organization rules or destructive transfers without confirmation are unacceptable outcomes.
+
+### VIII. Development Discipline and Incremental Delivery
+
+Features MUST be built in independently testable, deployable increments. No big-bang
+integration at the end of a cycle.
+
+Non-negotiable rules:
+- Each user story MUST have a defined independent test before implementation begins.
+- TDD is STRONGLY RECOMMENDED (test written → confirmed failing → implement → green).
+- No feature branch MUST be merged without passing its defined acceptance scenarios.
+- Performance benchmarks MUST be run as part of acceptance for any feature touching
+  the I/O or hashing subsystems.
+- The development tracker MUST be updated at the end of every session.
+  (see Development Tracker Standards below).
+
+Rationale: At this system scale, regressions in throughput or correctness are expensive
+to diagnose. Incremental delivery with per-story tests catches problems early.
+
+## FR Traceability Matrix
+
+| FR | Description | Governing Principle |
+|----|-------------|---------------------|
+| FR-001 | Source directory selection | VII |
+| FR-002 | Target directory selection | VII |
+| FR-003 | Media type support | VII |
+| FR-004 | Transfer mode (copy/move) | VII |
+| FR-005 | Recursive scanning | VII |
+| FR-006 | Metadata extraction priority | VII |
+| FR-007 | Date standardization | VII |
+| FR-008 | Folder structure creation | VII |
+| FR-009 | Filename collision handling | V |
+| FR-010 | Empty file detection | VI |
+| FR-011 | Small file detection | VI |
+| FR-012 | Corrupt media detection | VI |
+| FR-013 | Ignore rules | VI |
+| FR-014 | Job state persistence (JSON) | II |
+| FR-015 | Job import/export | II |
+| FR-016 | Pause processing | II |
+| FR-017 | Resume processing | II |
+| FR-018 | Stop processing | II |
+| FR-019 | Failure bucket | VI |
+| FR-020 | Skipped bucket | VI |
+| FR-021 | Background execution | II |
+| FR-022 | Session recovery | II |
+| FR-023 | Hash-based duplicate detection | V, III |
+| FR-024 | Duplicate index management | III |
+| FR-025 | Smart hashing optimization | I |
+| FR-026 | Real-time progress dashboard | IV |
+| FR-027 | Data transfer statistics | IV |
+| FR-028 | Throughput monitoring | IV |
+| FR-029 | ETA calculation | IV |
+| FR-030 | Resource utilization monitoring | IV |
+| FR-031 | Historical throughput graph | IV |
+
+## Development Tracker Standards
+
+The file `.specify/memory/tracker.md` is the authoritative development progress record.
+
+### Structure
+
+The tracker MUST contain:
+- **Project Status**: one-line current phase and overall completion estimate.
+- **Active Feature**: current branch name and spec link.
+- **Phase Progress**: checklist of all phases with status (Not Started / In Progress / Done).
+- **Session Log**: reverse-chronological list of sessions with date, work done, and next action.
+- **Blockers**: any open blockers with owner and target resolution date.
+- **Context Snapshot**: current implementation decisions, key file paths, and any non-obvious
+  state that would be needed to resume work cold.
+
+### Update Protocol
+
+The tracker MUST be updated:
+1. **Before starting a session** — confirm last session's "next action" is still accurate.
+2. **At each phase boundary** — mark phase Done, record what was delivered.
+3. **When a blocker is identified or resolved** — add or close blocker entry.
+4. **Before ending a session** — write Session Log entry with: date, tasks completed,
+   decisions made, and the precise next action to resume from.
+5. **After running `/speckit-agent-context-update`** — confirm CLAUDE.md reflects tracker state.
+
+### Visibility Commands
+
+- `/speckit-agent-context-update` — sync tracker state into CLAUDE.md for agent context.
+- Check tracker before every `/speckit-specify`, `/speckit-plan`, `/speckit-tasks`,
+  `/speckit-implement` to ensure no phase is being skipped or re-run unnecessarily.
+
+### Tracker Rebuild Trigger
+
+If the tracker becomes stale (session log > 7 days old with no update, or blockers unreviewed
+for > 3 sessions), a full tracker rebuild MUST be performed:
+1. Read current code state via `git log --oneline -20` and key source file inspection.
+2. Re-derive actual completion percentage from implemented vs planned tasks.
+3. Rewrite Context Snapshot to reflect current file paths and implementation decisions.
+4. Add a Session Log entry flagging the rebuild with rationale.
+
+## Quality Gates
+
+These gates MUST be satisfied before advancing between phases. Violations require explicit
+justification logged in the tracker under Blockers.
+
+| Gate | Condition to Pass |
+|------|-------------------|
+| **G1: Spec Complete** | All FR sections mapped; no NEEDS CLARIFICATION tokens remaining |
+| **G2: Plan Approved** | Constitution Check in plan.md passes; stack locked; performance targets defined |
+| **G3: Tasks Ready** | All tasks have phase assignment, story label, and parallelism flag |
+| **G4: Story Done** | Acceptance scenarios pass; benchmark within target for I/O stories |
+| **G5: Tracker Current** | Session log entry exists for today with next-action defined |
+| **G6: BRD Validated** | All FRs FR-001 through FR-031 are mapped to at least one user story in the spec |
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes all other project conventions. Amendments require:
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+1. A pull request updating this file with a version bump per semantic versioning rules below.
+2. The Sync Impact Report (HTML comment at top) updated to reflect what changed and why.
+3. All dependent templates verified or updated (see checklist in execution flow above).
+4. A tracker Session Log entry recording the amendment decision and rationale.
+
+### Versioning Policy
+
+- **MAJOR** (X.0.0): A principle is removed, renamed with incompatible meaning, or a
+  Quality Gate is eliminated.
+- **MINOR** (X.Y.0): A new principle or Quality Gate is added, or a section is materially
+  expanded.
+- **PATCH** (X.Y.Z): Wording clarification, typo fix, or non-semantic refinement.
+
+### Compliance Review
+
+All PRs that touch I/O paths, the hash index, SQLite schema, or the progress monitoring
+subsystem MUST pass a Constitution Check against Principles I, III, IV, and V before merge.
+
+All PRs that touch file validation, transfer mode, or folder organization MUST pass a
+Constitution Check against Principles VI and VII before merge.
+
+For runtime development guidance, refer to the active plan at `specs/[active-feature]/plan.md`
+and the tracker at `.specify/memory/tracker.md`.
+
+**Version**: 1.1.0 | **Ratified**: 2026-06-03 | **Last Amended**: 2026-06-03
