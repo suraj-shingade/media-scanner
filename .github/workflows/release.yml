@@ -1,0 +1,176 @@
+name: MediaScanner Release
+
+# Trigger: semantic version tags only (v1.2.3 format). Pre-release tags are excluded.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+# Required so GITHUB_TOKEN can create/delete GitHub Releases (gh release create/delete).
+permissions:
+  contents: write
+
+# Prevent duplicate pipeline runs for the same tag push. Does not cancel in-progress
+# builds so a tag push mid-build does not orphan released artifacts.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # macOS build — produces Universal Binary DMG + SHA-256 checksum
+  # Requires Azul Zulu JDK 21 so jpackage bundles a Zulu JRE into the installer.
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-mac:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Azul Zulu JDK 21 is required by the package-mac Maven profile (see pom.xml).
+      # For a true Universal Binary (ARM64 + x86_64), the Zulu Universal distribution
+      # must be used. Verify T013 (manual install test) confirms both architectures work.
+      - name: Set up Azul Zulu JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'zulu'
+
+      # Strip the leading 'v' from the tag (e.g., v1.2.3 → 1.2.3) and export as VERSION.
+      # Subsequent steps in this job reference it as ${{ env.VERSION }}.
+      - name: Set version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
+      # Overwrite pom.xml <version> with the tag-derived version so that
+      # ${project.version} flows correctly into the fat JAR manifest and jpackage
+      # --app-version argument, making the installer embed the correct version string.
+      - name: Set Maven version
+        run: mvn versions:set -DnewVersion=${{ env.VERSION }} -DgenerateBackupPoms=false
+
+      # Single Maven invocation: shade plugin builds the fat JAR, then the package-mac
+      # profile extracts JavaFX native libs and runs jpackage to produce the DMG.
+      # Output: target/installer/MediaScanner-${{ env.VERSION }}.dmg
+      - name: Build fat JAR and package DMG
+        run: mvn package -P package-mac -DskipTests
+
+      # shasum produces: "<hash>  <filename>\n" (two-space separator, shasum -c compatible).
+      # Run from target/installer so the checksum file references only the base filename.
+      - name: Generate SHA-256 checksum
+        working-directory: target/installer
+        run: shasum -a 256 MediaScanner-${{ env.VERSION }}.dmg > MediaScanner-${{ env.VERSION }}.dmg.sha256
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: |
+            target/installer/MediaScanner-${{ env.VERSION }}.dmg
+            target/installer/MediaScanner-${{ env.VERSION }}.dmg.sha256
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Windows build — produces MSI installer + SHA-256 checksum
+  # WiX Toolset v3 is pre-installed on windows-latest (required by jpackage MSI backend).
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-win:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Eclipse Temurin JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # PowerShell equivalent of the bash version-extraction step.
+      - name: Set version from tag
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Set Maven version
+        shell: pwsh
+        run: mvn versions:set "-DnewVersion=${{ env.VERSION }}" -DgenerateBackupPoms=false
+
+      # Single Maven invocation: shade plugin builds the fat JAR, then the package-win
+      # profile extracts JavaFX native DLLs and runs jpackage to produce the MSI.
+      # Output: target\installer\MediaScanner-${{ env.VERSION }}.msi
+      - name: Build fat JAR and package MSI
+        run: mvn package -P package-win -DskipTests
+
+      # Write "<lowercase-hash>  <filename>" in ASCII with a Unix newline for cross-platform
+      # shasum/Get-FileHash compatibility. [IO.File]::WriteAllText avoids the BOM and CRLF
+      # that Out-File adds by default.
+      - name: Generate SHA-256 checksum
+        shell: pwsh
+        run: |
+          $msi = "target\installer\MediaScanner-${{ env.VERSION }}.msi"
+          $hash = (Get-FileHash $msi -Algorithm SHA256).Hash.ToLower()
+          $line = "$hash  MediaScanner-${{ env.VERSION }}.msi`n"
+          [System.IO.File]::WriteAllText(
+            "target\installer\MediaScanner-${{ env.VERSION }}.msi.sha256",
+            $line,
+            [System.Text.Encoding]::ASCII
+          )
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            target/installer/MediaScanner-${{ env.VERSION }}.msi
+            target/installer/MediaScanner-${{ env.VERSION }}.msi.sha256
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Publish — downloads both platform artifacts, replaces any existing release,
+  # and creates a new publicly visible GitHub Release with 4 attached files.
+  # Only runs when BOTH build-mac and build-win succeed (GitHub Actions default
+  # behaviour for needs: — skipped automatically if any upstream job fails).
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish-release:
+    needs: [build-mac, build-win]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-artifacts
+          path: release-artifacts
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
+          path: release-artifacts
+
+      # FR-013: If a release for this tag already exists, delete it before creating
+      # a fresh one. The `|| true` ensures the step never fails when no release exists.
+      # We do NOT use --cleanup-tag to avoid briefly removing the remote tag.
+      - name: Delete existing release if present
+        run: gh release view "${{ github.ref_name }}" &>/dev/null && gh release delete "${{ github.ref_name }}" --yes || true
+
+      # FR-012: Publish immediately (no draft). --generate-notes uses GitHub's automatic
+      # release notes based on merged PRs/commits since the previous tag.
+      - name: Create GitHub Release
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "MediaScanner ${{ env.VERSION }}" \
+            --generate-notes \
+            --latest \
+            "release-artifacts/MediaScanner-${{ env.VERSION }}.dmg" \
+            "release-artifacts/MediaScanner-${{ env.VERSION }}.dmg.sha256" \
+            "release-artifacts/MediaScanner-${{ env.VERSION }}.msi" \
+            "release-artifacts/MediaScanner-${{ env.VERSION }}.msi.sha256"

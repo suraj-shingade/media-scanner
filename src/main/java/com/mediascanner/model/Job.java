@@ -45,6 +45,20 @@ public class Job {
         if (sourcePath.equals(targetPath)) {
             throw new IllegalArgumentException("Source and target paths must differ");
         }
+        java.nio.file.Path src = java.nio.file.Paths.get(sourcePath).toAbsolutePath().normalize();
+        java.nio.file.Path tgt = java.nio.file.Paths.get(targetPath).toAbsolutePath().normalize();
+        if (tgt.startsWith(src)) {
+            throw new IllegalArgumentException("""
+                Target directory is inside the source directory.
+                The scanner would pick up files it just copied, causing an infinite loop.
+                Choose a target outside the source folder.""");
+        }
+        if (src.startsWith(tgt)) {
+            throw new IllegalArgumentException("""
+                Source directory is inside the target directory.
+                The scanner would read from within its own output area.
+                Choose a source outside the target folder.""");
+        }
         Job job = new Job();
         job.jobId = "JOB-" + LocalDateTime.now().format(JOB_DATE_FMT)
                   + "-" + String.format("%03d", dailyCounter.getAndIncrement());
