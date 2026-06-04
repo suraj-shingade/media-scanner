@@ -3,7 +3,6 @@ package com.mediascanner.engine;
 import com.mediascanner.checkpoint.CheckpointManager;
 import com.mediascanner.config.AppConfig;
 import com.mediascanner.db.Database;
-import com.mediascanner.engine.AppStateManager;
 import com.mediascanner.db.HashIndexDao;
 import com.mediascanner.db.JobStatisticsDao;
 import com.mediascanner.model.*;
@@ -11,20 +10,23 @@ import com.mediascanner.monitor.ProgressTracker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.sql.SQLException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 public class ScanEngine {
 
     private static final Logger log = LoggerFactory.getLogger(ScanEngine.class);
+    private static final int RECENT_FILES_LIMIT = 8;
 
     private final AppConfig config;
-    private final Database database;
     private final HashIndexDao hashIndexDao;
     private final JobStatisticsDao jobStatisticsDao;
     private final ProgressTracker progressTracker;
@@ -36,19 +38,22 @@ public class ScanEngine {
     private Job currentJob;
     private JobStatistics jobStatistics;
 
-    // RAM-aggressive caches (US9: T071)
+    // Live activity visible to the dashboard
+    private final AtomicReference<String> currentFilePath = new AtomicReference<>("");
+    private final ConcurrentLinkedDeque<String> recentFiles = new ConcurrentLinkedDeque<>();
+
+    // RAM-aggressive caches
     private final Map<String, Boolean> destFolderCache = new HashMap<>();
     private final Map<String, LocalDateTime> metadataCache = new HashMap<>();
 
     public ScanEngine(AppConfig config, Database database, ProgressTracker progressTracker) {
         this.config = config;
-        this.database = database;
         this.hashIndexDao = new HashIndexDao(database);
         this.jobStatisticsDao = new JobStatisticsDao(database);
         this.progressTracker = progressTracker;
     }
 
-    public void start(Job job) throws Exception {
+    public void start(Job job) throws IOException, SQLException {
         this.currentJob = job;
         this.pauseRequested = false;
         this.stopRequested = false;
@@ -66,6 +71,8 @@ public class ScanEngine {
 
         destFolderCache.clear();
         metadataCache.clear();
+        recentFiles.clear();
+        currentFilePath.set("");
 
         FileScanner scanner = new FileScanner(job.getIgnoreRules());
         FileValidator validator = new FileValidator(job.getImageSizeThresholdKb(),
@@ -83,13 +90,17 @@ public class ScanEngine {
             fileStream.forEach(path -> {
                 if (stopRequested) return;
                 Future<?> f = workerPool.submit(() -> processFile(
-                    path, job, validator, extractor, hashEngine, transfer,
-                    checkpointManager));
+                    path, job, validator, extractor, hashEngine, transfer, checkpointManager));
                 futures.add(f);
             });
 
             for (Future<?> f : futures) {
-                try { f.get(); } catch (Exception e) {
+                try {
+                    f.get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.warn("Worker interrupted");
+                } catch (ExecutionException e) {
                     log.warn("Worker exception: {}", e.getMessage());
                 }
             }
@@ -97,6 +108,7 @@ public class ScanEngine {
 
         workerPool.shutdown();
         checkpointManager.stop();
+        currentFilePath.set("");
 
         if (!stopRequested) {
             jobStatistics.setStatus("COMPLETED");
@@ -113,128 +125,27 @@ public class ScanEngine {
     private void processFile(Path path, Job job, FileValidator validator,
                               MetadataExtractor extractor, HashEngine hashEngine,
                               FileTransfer transfer, CheckpointManager checkpointManager) {
-        while (pauseRequested && !stopRequested) {
-            try { Thread.sleep(100); } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-        }
-        if (stopRequested) return;
-
+        if (!awaitResumeOrAbort()) return;
         try {
-            String pathStr = path.toAbsolutePath().toString();
+            MediaFile mediaFile = buildMediaFile(path);
+            currentFilePath.set(mediaFile.getAbsolutePath());
 
-            MediaFile mediaFile = new MediaFile();
-            mediaFile.setAbsolutePath(pathStr);
-            mediaFile.setFileName(path.getFileName().toString());
-            String name = path.getFileName().toString();
-            int dot = name.lastIndexOf('.');
-            mediaFile.setExtension(dot >= 0 ? name.substring(dot + 1).toLowerCase() : "");
+            if (!validateAndRecord(mediaFile, path, validator)) return;
+            if (!extractAndRecord(mediaFile, path, extractor)) return;
 
-            // Validate
-            validator.validate(mediaFile, path);
-            if (mediaFile.getValidationStatus() == MediaFile.ValidationStatus.FAILED) {
-                synchronized (jobStatistics) {
-                    jobStatistics.setFilesFailed(jobStatistics.getFilesFailed() + 1);
-                    jobStatistics.setCorruptFilesCount(jobStatistics.getCorruptFilesCount() + 1);
-                    jobStatistics.setTotalBytesSkipped(
-                        jobStatistics.getTotalBytesSkipped() + mediaFile.getSizeBytes());
-                }
-                progressTracker.incrementFailed();
-                return;
-            }
-            if (mediaFile.getValidationStatus() == MediaFile.ValidationStatus.SKIPPED) {
-                synchronized (jobStatistics) {
-                    jobStatistics.setFilesSkipped(jobStatistics.getFilesSkipped() + 1);
-                    if (mediaFile.getSkipReason() == MediaFile.SkipReason.EMPTY_FILE) {
-                        jobStatistics.setEmptyFilesCount(jobStatistics.getEmptyFilesCount() + 1);
-                    } else if (mediaFile.getSkipReason() == MediaFile.SkipReason.SMALL_FILE) {
-                        jobStatistics.setSmallFilesCount(jobStatistics.getSmallFilesCount() + 1);
-                    }
-                    jobStatistics.setTotalBytesSkipped(
-                        jobStatistics.getTotalBytesSkipped() + mediaFile.getSizeBytes());
-                }
-                progressTracker.incrementSkipped();
-                return;
-            }
+            resolveDestination(mediaFile, job, extractor);
 
-            // Extract metadata — check cache first
-            LocalDateTime cachedDate = metadataCache.get(pathStr);
-            if (cachedDate != null) {
-                mediaFile.setExtractedDate(cachedDate);
-                mediaFile.setDateSource(MediaFile.DateSource.EMBEDDED_CAPTURE);
-            } else {
-                extractor.extract(mediaFile, path);
-                if (mediaFile.getExtractedDate() != null) {
-                    metadataCache.put(pathStr, mediaFile.getExtractedDate());
-                }
-            }
-
-            if (mediaFile.getExtractedDate() == null) {
-                mediaFile.setValidationStatus(MediaFile.ValidationStatus.SKIPPED);
-                mediaFile.setSkipReason(MediaFile.SkipReason.METADATA_MISSING);
-                synchronized (jobStatistics) {
-                    jobStatistics.setFilesSkipped(jobStatistics.getFilesSkipped() + 1);
-                }
-                progressTracker.incrementSkipped();
-                return;
-            }
-
-            // Compute destination path
-            String subDir = extractor.computeFolderPath(mediaFile.getExtractedDate(),
-                                                         job.getFolderPattern());
-            String destDir = job.getTargetPath() + "/" + subDir;
-            String destPath = destDir + "/" + mediaFile.getFileName();
-            mediaFile.setDestinationPath(destPath);
-
-            // Create dest folder if needed
-            if (!destFolderCache.getOrDefault(destDir, false)) {
-                java.nio.file.Files.createDirectories(Paths.get(destDir));
-                synchronized (jobStatistics) {
-                    if (!destFolderCache.containsKey(destDir)) {
-                        jobStatistics.setTotalFoldersCreated(
-                            jobStatistics.getTotalFoldersCreated() + 1);
-                    }
-                }
-                destFolderCache.put(destDir, true);
-            }
-
-            // Hash and duplicate check
             String hash = hashEngine.computeHash(path, mediaFile);
             FileHashRecord existing = hashIndexDao.findBySha256(hash);
-            if (existing != null && !existing.getFilePath().equals(pathStr)) {
-                handleDuplicate(mediaFile, job, transfer, hash);
+            if (existing != null && !existing.getFilePath().equals(mediaFile.getAbsolutePath())) {
+                handleDuplicate(mediaFile, job, transfer);
                 return;
             }
 
-            // Transfer
-            Path destination = transfer.resolveCollisionFreePath(Paths.get(destPath));
-            mediaFile.setDestinationPath(destination.toString());
-
-            if (job.getTransferMode() == Job.TransferMode.COPY) {
-                transfer.copy(path, destination);
-                synchronized (jobStatistics) {
-                    jobStatistics.setFilesCopied(jobStatistics.getFilesCopied() + 1);
-                    jobStatistics.setTotalBytesCopied(
-                        jobStatistics.getTotalBytesCopied() + mediaFile.getSizeBytes());
-                }
-            } else {
-                transfer.move(path, destination);
-                synchronized (jobStatistics) {
-                    jobStatistics.setFilesMoved(jobStatistics.getFilesMoved() + 1);
-                    jobStatistics.setTotalBytesMoved(
-                        jobStatistics.getTotalBytesMoved() + mediaFile.getSizeBytes());
-                }
-            }
-
-            mediaFile.setOutcome(MediaFile.Outcome.TRANSFERRED);
-            synchronized (jobStatistics) {
-                jobStatistics.setFilesProcessed(jobStatistics.getFilesProcessed() + 1);
-                jobStatistics.setTotalBytesProcessed(
-                    jobStatistics.getTotalBytesProcessed() + mediaFile.getSizeBytes());
-            }
+            performTransfer(path, mediaFile, job, transfer);
             progressTracker.incrementProcessed(mediaFile.getSizeBytes());
             checkpointManager.onFileProcessed();
+            addToRecentFiles(mediaFile.getFileName());
 
         } catch (Exception e) {
             log.error("Error processing file {}: {}", path, e.getMessage());
@@ -245,8 +156,136 @@ public class ScanEngine {
         }
     }
 
-    private void handleDuplicate(MediaFile mediaFile, Job job, FileTransfer transfer,
-                                  String hash) throws Exception {
+    /** Blocks while paused; returns false if the thread was interrupted or stop was requested. */
+    private boolean awaitResumeOrAbort() {
+        while (pauseRequested && !stopRequested) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return !stopRequested;
+    }
+
+    private static MediaFile buildMediaFile(Path path) {
+        String pathStr = path.toAbsolutePath().toString();
+        String name = path.getFileName().toString();
+        int dot = name.lastIndexOf('.');
+        MediaFile mediaFile = new MediaFile();
+        mediaFile.setAbsolutePath(pathStr);
+        mediaFile.setFileName(name);
+        mediaFile.setExtension(dot >= 0 ? name.substring(dot + 1).toLowerCase() : "");
+        return mediaFile;
+    }
+
+    private boolean validateAndRecord(MediaFile mediaFile, Path path, FileValidator validator) {
+        validator.validate(mediaFile, path);
+        if (mediaFile.getValidationStatus() == MediaFile.ValidationStatus.FAILED) {
+            synchronized (jobStatistics) {
+                jobStatistics.setFilesFailed(jobStatistics.getFilesFailed() + 1);
+                jobStatistics.setCorruptFilesCount(jobStatistics.getCorruptFilesCount() + 1);
+                jobStatistics.setTotalBytesSkipped(
+                    jobStatistics.getTotalBytesSkipped() + mediaFile.getSizeBytes());
+            }
+            progressTracker.incrementFailed();
+            return false;
+        }
+        if (mediaFile.getValidationStatus() == MediaFile.ValidationStatus.SKIPPED) {
+            synchronized (jobStatistics) {
+                jobStatistics.setFilesSkipped(jobStatistics.getFilesSkipped() + 1);
+                if (mediaFile.getSkipReason() == MediaFile.SkipReason.EMPTY_FILE) {
+                    jobStatistics.setEmptyFilesCount(jobStatistics.getEmptyFilesCount() + 1);
+                } else if (mediaFile.getSkipReason() == MediaFile.SkipReason.SMALL_FILE) {
+                    jobStatistics.setSmallFilesCount(jobStatistics.getSmallFilesCount() + 1);
+                }
+                jobStatistics.setTotalBytesSkipped(
+                    jobStatistics.getTotalBytesSkipped() + mediaFile.getSizeBytes());
+            }
+            progressTracker.incrementSkipped();
+            return false;
+        }
+        return true;
+    }
+
+    private boolean extractAndRecord(MediaFile mediaFile, Path path, MetadataExtractor extractor) {
+        LocalDateTime cachedDate = metadataCache.get(mediaFile.getAbsolutePath());
+        if (cachedDate != null) {
+            mediaFile.setExtractedDate(cachedDate);
+            mediaFile.setDateSource(MediaFile.DateSource.EMBEDDED_CAPTURE);
+        } else {
+            extractor.extract(mediaFile, path);
+            if (mediaFile.getExtractedDate() != null) {
+                metadataCache.put(mediaFile.getAbsolutePath(), mediaFile.getExtractedDate());
+            }
+        }
+        if (mediaFile.getExtractedDate() == null) {
+            mediaFile.setValidationStatus(MediaFile.ValidationStatus.SKIPPED);
+            mediaFile.setSkipReason(MediaFile.SkipReason.METADATA_MISSING);
+            synchronized (jobStatistics) {
+                jobStatistics.setFilesSkipped(jobStatistics.getFilesSkipped() + 1);
+            }
+            progressTracker.incrementSkipped();
+            return false;
+        }
+        return true;
+    }
+
+    private void resolveDestination(MediaFile mediaFile, Job job,
+                                     MetadataExtractor extractor) throws IOException {
+        String subDir = extractor.computeFolderPath(mediaFile.getExtractedDate(),
+                                                     job.getFolderPattern());
+        Path destDirPath = Paths.get(job.getTargetPath()).resolve(subDir);
+        mediaFile.setDestinationPath(destDirPath.resolve(mediaFile.getFileName()).toString());
+        String destDir = destDirPath.toString();
+        if (!Boolean.TRUE.equals(destFolderCache.get(destDir))) {
+            Files.createDirectories(destDirPath);
+            destFolderCache.put(destDir, Boolean.TRUE);
+            synchronized (jobStatistics) {
+                jobStatistics.setTotalFoldersCreated(
+                    jobStatistics.getTotalFoldersCreated() + 1);
+            }
+        }
+    }
+
+    private void performTransfer(Path src, MediaFile mediaFile, Job job,
+                                  FileTransfer transfer) throws IOException {
+        Path destination = transfer.resolveCollisionFreePath(
+            Paths.get(mediaFile.getDestinationPath()));
+        mediaFile.setDestinationPath(destination.toString());
+        if (job.getTransferMode() == Job.TransferMode.COPY) {
+            transfer.copy(src, destination);
+            synchronized (jobStatistics) {
+                jobStatistics.setFilesCopied(jobStatistics.getFilesCopied() + 1);
+                jobStatistics.setTotalBytesCopied(
+                    jobStatistics.getTotalBytesCopied() + mediaFile.getSizeBytes());
+            }
+        } else {
+            transfer.move(src, destination);
+            synchronized (jobStatistics) {
+                jobStatistics.setFilesMoved(jobStatistics.getFilesMoved() + 1);
+                jobStatistics.setTotalBytesMoved(
+                    jobStatistics.getTotalBytesMoved() + mediaFile.getSizeBytes());
+            }
+        }
+        mediaFile.setOutcome(MediaFile.Outcome.TRANSFERRED);
+        synchronized (jobStatistics) {
+            jobStatistics.setFilesProcessed(jobStatistics.getFilesProcessed() + 1);
+            jobStatistics.setTotalBytesProcessed(
+                jobStatistics.getTotalBytesProcessed() + mediaFile.getSizeBytes());
+        }
+    }
+
+    private void addToRecentFiles(String fileName) {
+        recentFiles.addFirst(fileName);
+        while (recentFiles.size() > RECENT_FILES_LIMIT) {
+            recentFiles.pollLast();
+        }
+    }
+
+    private void handleDuplicate(MediaFile mediaFile, Job job,
+                                  FileTransfer transfer) throws IOException {
         synchronized (jobStatistics) {
             jobStatistics.setDuplicatesFound(jobStatistics.getDuplicatesFound() + 1);
             jobStatistics.setDuplicateByteSavings(
@@ -256,10 +295,10 @@ public class ScanEngine {
         mediaFile.setOutcome(MediaFile.Outcome.DUPLICATE);
 
         switch (job.getDuplicatePolicy()) {
-            case SKIP -> { /* do nothing */ }
+            case SKIP -> { /* intentionally no action */ }
             case MOVE_TO_BUCKET -> {
                 Path dupDir = Paths.get(job.getTargetPath(), "_duplicates");
-                java.nio.file.Files.createDirectories(dupDir);
+                Files.createDirectories(dupDir);
                 Path dest = transfer.resolveCollisionFreePath(
                     dupDir.resolve(mediaFile.getFileName()));
                 transfer.copy(Paths.get(mediaFile.getAbsolutePath()), dest);
@@ -275,7 +314,7 @@ public class ScanEngine {
                 do {
                     dest = destDir.resolve(nameNoExt + "_DUP_" + n + ext);
                     n++;
-                } while (java.nio.file.Files.exists(dest));
+                } while (Files.exists(dest));
                 transfer.copy(Paths.get(mediaFile.getAbsolutePath()), dest);
             }
         }
@@ -290,7 +329,8 @@ public class ScanEngine {
                     com.sun.jna.platform.win32.Kernel32.INSTANCE;
                 com.sun.jna.platform.win32.WinNT.HANDLE process =
                     kernel32.GetCurrentProcess();
-                kernel32.SetPriorityClass(process, new com.sun.jna.platform.win32.WinDef.DWORD(0x00000080)); // HIGH_PRIORITY_CLASS
+                kernel32.SetPriorityClass(process,
+                    new com.sun.jna.platform.win32.WinDef.DWORD(0x00000080));
                 log.info("High-Priority Mode: Windows HIGH_PRIORITY_CLASS set");
             } else if (os.contains("mac") || os.contains("nix") || os.contains("nux")) {
                 CLibrary.INSTANCE.setpriority(0, 0, -10);
@@ -347,4 +387,10 @@ public class ScanEngine {
     public boolean isStopRequested() { return stopRequested; }
     public Job getCurrentJob() { return currentJob; }
     public JobStatistics getJobStatistics() { return jobStatistics; }
+
+    /** Path of the file currently being processed by a worker thread. */
+    public String getCurrentFilePath() { return currentFilePath.get(); }
+
+    /** Snapshot of the most recently transferred file names (newest first, max 8). */
+    public List<String> getRecentFiles() { return new ArrayList<>(recentFiles); }
 }

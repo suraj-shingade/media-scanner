@@ -18,8 +18,40 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <main.class>com.mediascanner.app.MediaScannerApp</main.class>
+        <main.class>com.mediascanner.app.Launcher</main.class>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Pin all JavaFX modules to the same version to prevent Maven 3.9+
+                 "effective model" warnings caused by transitive version mismatches. -->
+            <dependency>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-base</artifactId>
+                <version>${javafx.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-controls</artifactId>
+                <version>${javafx.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-fxml</artifactId>
+                <version>${javafx.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-graphics</artifactId>
+                <version>${javafx.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.openjfx</groupId>
+                <artifactId>javafx-swing</artifactId>
+                <version>${javafx.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <!-- JavaFX -->
@@ -187,27 +219,71 @@
             <!-- Maven Assembly Plugin (for bundling) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-assembly-plugin</artifactId>
-                <version>3.6.0</version>
-                <configuration>
-                    <archive>
-                        <manifest>
-                            <mainClass>${main.class}</mainClass>
-                        </manifest>
-                    </archive>
-                    <descriptorRefs>
-                        <descriptorRef>jar-with-dependencies</descriptorRef>
-                    </descriptorRefs>
-                    <finalName>mediascanner</finalName>
-                    <appendAssemblyId>false</appendAssemblyId>
-                </configuration>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.3</version>
                 <executions>
                     <execution>
-                        <id>make-assembly</id>
+                        <id>make-fat-jar</id>
                         <phase>package</phase>
                         <goals>
-                            <goal>single</goal>
+                            <goal>shade</goal>
                         </goals>
+                        <configuration>
+                            <!-- Write directly to target/mediascanner.jar without replacing
+                                 the main project artifact (mediascanner-1.0.0.jar). -->
+                            <outputFile>${project.build.directory}/mediascanner.jar</outputFile>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <shadedArtifactAttached>false</shadedArtifactAttached>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>${main.class}</mainClass>
+                                    <manifestEntries>
+                                        <Implementation-Title>${project.name}</Implementation-Title>
+                                        <Implementation-Version>${project.version}</Implementation-Version>
+                                    </manifestEntries>
+                                </transformer>
+                                <!-- Merge SPI registrations from all JARs -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <!-- Merge Apache LICENSE files instead of overwriting -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheLicenseResourceTransformer"/>
+                                <!-- Merge Apache NOTICE files instead of overwriting -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer">
+                                    <addHeader>false</addHeader>
+                                </transformer>
+                            </transformers>
+                            <filters>
+                                <!-- commons-logging classes are superseded by jcl-over-slf4j -->
+                                <filter>
+                                    <artifact>commons-logging:commons-logging</artifact>
+                                    <excludes><exclude>**</exclude></excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <!-- Module descriptors and signatures -->
+                                        <exclude>module-info.class</exclude>
+                                        <exclude>META-INF/versions/**</exclude>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <!-- Duplicate licence/notice/dependency files handled by transformers above -->
+                                        <exclude>META-INF/LICENSE</exclude>
+                                        <exclude>META-INF/LICENSE.txt</exclude>
+                                        <exclude>META-INF/LICENSE.md</exclude>
+                                        <exclude>META-INF/NOTICE</exclude>
+                                        <exclude>META-INF/NOTICE.txt</exclude>
+                                        <exclude>META-INF/NOTICE.md</exclude>
+                                        <exclude>META-INF/DEPENDENCIES</exclude>
+                                        <exclude>META-INF/AL2.0</exclude>
+                                        <exclude>META-INF/LGPL2.1</exclude>
+                                        <!-- GraalVM substrate config not needed on JVM -->
+                                        <exclude>META-INF/substrate/**</exclude>
+                                        <!-- Handled by ManifestResourceTransformer -->
+                                        <exclude>META-INF/MANIFEST.MF</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
@@ -220,6 +296,7 @@
                 <configuration>
                     <archive>
                         <manifest>
+                            <mainClass>${main.class}</mainClass>
                             <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
                             <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
                         </manifest>
@@ -263,6 +340,166 @@
                                 <descriptor>src/assembly/release.xml</descriptor>
                             </descriptors>
                         </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- macOS DMG installer (Universal Binary: ARM64 + x86_64) -->
+        <!-- Prerequisites: JAVA_HOME must point to Azul Zulu JDK 21 Universal -->
+        <!-- Usage: mvn package -P package-mac -DskipTests -->
+        <!-- Requires JAVA_HOME pointing to a JDK 21 with jpackage (any vendor). -->
+        <!-- JavaFX native libs are extracted from the fat JAR and bundled alongside it -->
+        <!-- in Contents/app/; -Djava.library.path=$APPDIR lets the JVM find them. -->
+        <profile>
+            <id>package-mac</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.2.0</version>
+                        <executions>
+                            <!-- Step 1: Extract JavaFX .dylib files from the fat JAR into target/
+                                 so jpackage picks them up and bundles them in Contents/app/. -->
+                            <execution>
+                                <id>extract-javafx-natives-mac</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>bash</executable>
+                                    <workingDirectory>${project.build.directory}</workingDirectory>
+                                    <arguments>
+                                        <argument>-c</argument>
+                                        <argument>unzip -jo mediascanner.jar libglass.dylib libjavafx_iio.dylib libjavafx_font.dylib libprism_common.dylib libprism_es2.dylib libdecora_sse.dylib libprism_sw.dylib</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                            <!-- Step 2: Run jpackage. $APPDIR expands at runtime to Contents/app/
+                                 where the extracted .dylib files reside. -->
+                            <execution>
+                                <id>jpackage-mac</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>${env.JAVA_HOME}/bin/jpackage</executable>
+                                    <arguments>
+                                        <argument>--type</argument>
+                                        <argument>dmg</argument>
+                                        <argument>--name</argument>
+                                        <argument>MediaScanner</argument>
+                                        <argument>--app-version</argument>
+                                        <argument>${project.version}</argument>
+                                        <argument>--input</argument>
+                                        <argument>${project.build.directory}</argument>
+                                        <argument>--main-jar</argument>
+                                        <argument>mediascanner.jar</argument>
+                                        <argument>--main-class</argument>
+                                        <argument>com.mediascanner.app.MediaScannerApp</argument>
+                                        <argument>--icon</argument>
+                                        <argument>src/packaging/macos/MediaScanner.icns</argument>
+                                        <argument>--dest</argument>
+                                        <argument>${project.build.directory}/installer</argument>
+                                        <argument>--mac-package-identifier</argument>
+                                        <argument>com.mediascanner.app</argument>
+                                        <argument>--mac-package-name</argument>
+                                        <argument>MediaScanner</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>-Djava.library.path=$APPDIR</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>--add-opens=java.base/java.lang=ALL-UNNAMED</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>-Xms64m</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>-Xmx2g</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Windows MSI installer -->
+        <!-- Prerequisites: JAVA_HOME must point to JDK 21; WiX Toolset v3.x must be on PATH -->
+        <!-- Usage: mvn package -P package-win -DskipTests -->
+        <!-- Same JavaFX native lib extraction strategy as package-mac: extract .dll files -->
+        <!-- from the fat JAR into target/ and set -Djava.library.path=$APPDIR at runtime. -->
+        <profile>
+            <id>package-win</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.2.0</version>
+                        <executions>
+                            <!-- Step 1: Extract JavaFX .dll files from the fat JAR into target/ -->
+                            <execution>
+                                <id>extract-javafx-natives-win</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>cmd</executable>
+                                    <workingDirectory>${project.build.directory}</workingDirectory>
+                                    <arguments>
+                                        <argument>/c</argument>
+                                        <argument>jar xf mediascanner.jar glass.dll javafx_font.dll javafx_font_t2k.dll javafx_iio.dll prism_common.dll prism_d3d.dll prism_es2.dll prism_sw.dll 2>nul &amp; exit 0</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                            <!-- Step 2: Run jpackage -->
+                            <execution>
+                                <id>jpackage-win</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>${env.JAVA_HOME}/bin/jpackage</executable>
+                                    <arguments>
+                                        <argument>--type</argument>
+                                        <argument>msi</argument>
+                                        <argument>--name</argument>
+                                        <argument>MediaScanner</argument>
+                                        <argument>--app-version</argument>
+                                        <argument>${project.version}</argument>
+                                        <argument>--input</argument>
+                                        <argument>${project.build.directory}</argument>
+                                        <argument>--main-jar</argument>
+                                        <argument>mediascanner.jar</argument>
+                                        <argument>--main-class</argument>
+                                        <argument>com.mediascanner.app.MediaScannerApp</argument>
+                                        <argument>--icon</argument>
+                                        <argument>src/packaging/windows/MediaScanner.ico</argument>
+                                        <argument>--dest</argument>
+                                        <argument>${project.build.directory}/installer</argument>
+                                        <argument>--win-dir-chooser</argument>
+                                        <argument>--win-menu</argument>
+                                        <argument>--win-shortcut</argument>
+                                        <argument>--win-menu-group</argument>
+                                        <argument>MediaScanner</argument>
+                                        <argument>--win-upgrade-uuid</argument>
+                                        <argument>a1b2c3d4-e5f6-7890-abcd-ef1234567890</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>-Djava.library.path=$APPDIR</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>--add-opens=java.base/java.lang=ALL-UNNAMED</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>-Xms64m</argument>
+                                        <argument>--java-options</argument>
+                                        <argument>-Xmx2g</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>

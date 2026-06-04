@@ -30,3 +30,4 @@ target/test-db/
 *.dmg
 *.msi
 *.exe
+target/installer/

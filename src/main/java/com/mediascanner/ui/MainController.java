@@ -140,9 +140,9 @@ public class MainController implements Initializable {
         startButton.setDisable(!valid);
     }
 
-    @FXML private void onTransferModeChanged() {}
-    @FXML private void onFolderPatternChanged() {}
-    @FXML private void onDuplicatePolicyChanged() {}
+    @FXML private void onTransferModeChanged() { /* selection read at scan time */ }
+    @FXML private void onFolderPatternChanged() { /* selection read at scan time */ }
+    @FXML private void onDuplicatePolicyChanged() { /* selection read at scan time */ }
 
     @FXML private void onStartScan() {
         String source = sourcePathField.getText();
@@ -153,12 +153,18 @@ public class MainController implements Initializable {
         Job.FolderPattern pattern = mapFolderPattern(folderPatternCombo.getValue());
         Job.DuplicatePolicy policy = mapDuplicatePolicy(duplicatePolicyCombo.getValue());
 
-        Job job = Job.create(source, target, mode, pattern, policy,
+        Job job;
+        try {
+            job = Job.create(source, target, mode, pattern, policy,
                              config.getImageSizeThresholdKb(),
                              config.getVideoSizeThresholdKb(),
                              config.getWorkerThreadCount(),
                              config.isHighPriorityMode(),
                              config.getIgnoreRules());
+        } catch (IllegalArgumentException e) {
+            showAlert("Invalid Path Configuration", e.getMessage());
+            return;
+        }
 
         navigateToDashboard(job);
     }
