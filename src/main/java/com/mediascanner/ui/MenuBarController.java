@@ -185,12 +185,16 @@ public class MenuBarController {
         miSummary.setAccelerator(javafx.scene.input.KeyCombination.keyCombination("shortcut+3"));
         miSummary.setOnAction(e -> onViewSummary());
 
+        MenuItem miJobHistory = new MenuItem("Job History");
+        miJobHistory.setAccelerator(javafx.scene.input.KeyCombination.keyCombination("shortcut+4"));
+        miJobHistory.setOnAction(e -> onViewJobHistory());
+
         miDarkMode = new CheckMenuItem("Toggle Dark Mode");
         miDarkMode.setAccelerator(javafx.scene.input.KeyCombination.keyCombination("shortcut+D"));
         miDarkMode.setOnAction(e -> onToggleDarkMode());
 
         menu.getItems().addAll(
-            miConfiguration, miDashboard, miSummary,
+            miConfiguration, miDashboard, miSummary, miJobHistory,
             new SeparatorMenuItem(), miDarkMode);
         return menu;
     }
@@ -422,6 +426,10 @@ public class MenuBarController {
 
     public void onViewSummary() {
         screenNavigator.navigateTo(ScreenType.SUMMARY);
+    }
+
+    public void onViewJobHistory() {
+        screenNavigator.navigateTo(ScreenType.JOB_HISTORY);
     }
 
     public void onToggleDarkMode() {

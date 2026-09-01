@@ -1,28 +1,17 @@
 package com.mediascanner.engine;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.mediascanner.model.FailureRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.*;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 
 public class FileTransfer {
 
     private static final Logger log = LoggerFactory.getLogger(FileTransfer.class);
 
-    private final String targetRoot;
-    private final ObjectMapper mapper;
-
     public FileTransfer(String targetRoot) {
-        this.targetRoot = targetRoot;
-        this.mapper = new ObjectMapper();
-        this.mapper.enable(SerializationFeature.INDENT_OUTPUT);
+        // targetRoot is retained by the caller; report writing moved to JobReportService (feature 005).
     }
 
     public void copy(Path source, Path destination) throws IOException {
@@ -43,9 +32,21 @@ public class FileTransfer {
     }
 
     public void move(Path source, Path destination) throws IOException {
+        Files.createDirectories(destination.getParent());
+        // Same-volume moves are a metadata rename: no bytes are read or written. Falling straight
+        // through to copy+delete would re-read the whole archive for a Move job.
+        if (!Files.exists(destination)) {
+            try {
+                Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE);
+                log.debug("Moved (rename) {} -> {}", source, destination);
+                return;
+            } catch (AtomicMoveNotSupportedException e) {
+                log.debug("Cross-volume move for {}; falling back to copy+delete", source);
+            }
+        }
         copy(source, destination);
         Files.delete(source);
-        log.debug("Moved {} -> {}", source, destination);
+        log.debug("Moved (copy+delete) {} -> {}", source, destination);
     }
 
     private void verifyCopy(Path source, Path destination) throws IOException {
@@ -78,23 +79,5 @@ public class FileTransfer {
             n++;
         } while (Files.exists(candidate));
         return candidate;
-    }
-
-    public void appendFailureRecord(FailureRecord record) throws IOException {
-        Path failureDir = Paths.get(targetRoot, "_failures");
-        Files.createDirectories(failureDir);
-        Path reportFile = failureDir.resolve("failure-report.json");
-
-        List<FailureRecord> records = new ArrayList<>();
-        if (Files.exists(reportFile)) {
-            try {
-                FailureRecord[] existing = mapper.readValue(reportFile.toFile(), FailureRecord[].class);
-                records.addAll(List.of(existing));
-            } catch (Exception e) {
-                log.warn("Could not read existing failure report, starting fresh");
-            }
-        }
-        records.add(record);
-        mapper.writeValue(reportFile.toFile(), records);
     }
 }

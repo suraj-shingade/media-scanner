@@ -24,8 +24,8 @@ public class HashIndexDao {
         String sql = """
             INSERT INTO FILE_HASH_INDEX
               (FILE_PATH, FILE_NAME, FILE_SIZE, FILE_MODIFICATION_TS, SHA256_HASH,
-               MEDIA_DATE, CREATED_AT, LAST_PROCESSED_AT)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               PARTIAL_HASH, MEDIA_DATE, CREATED_AT, LAST_PROCESSED_AT)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """;
         try (PreparedStatement ps = database.getConnection().prepareStatement(sql)) {
             ps.setString(1, record.getFilePath());
@@ -33,10 +33,11 @@ public class HashIndexDao {
             ps.setLong(3, record.getFileSizeBytes());
             ps.setString(4, record.getFileModificationTs().toString());
             ps.setString(5, record.getSha256Hash());
-            ps.setString(6, record.getMediaDate() != null
+            ps.setString(6, record.getPartialHash());
+            ps.setString(7, record.getMediaDate() != null
                 ? record.getMediaDate().format(ISO_FMT) : null);
-            ps.setString(7, record.getCreatedAt().toString());
-            ps.setString(8, record.getLastProcessedAt().toString());
+            ps.setString(8, record.getCreatedAt().toString());
+            ps.setString(9, record.getLastProcessedAt().toString());
             ps.executeUpdate();
         }
     }
@@ -65,17 +66,18 @@ public class HashIndexDao {
         String sql = """
             UPDATE FILE_HASH_INDEX
                SET FILE_SIZE = ?, FILE_MODIFICATION_TS = ?, SHA256_HASH = ?,
-                   MEDIA_DATE = ?, LAST_PROCESSED_AT = ?
+                   PARTIAL_HASH = ?, MEDIA_DATE = ?, LAST_PROCESSED_AT = ?
              WHERE FILE_PATH = ?
             """;
         try (PreparedStatement ps = database.getConnection().prepareStatement(sql)) {
             ps.setLong(1, record.getFileSizeBytes());
             ps.setString(2, record.getFileModificationTs().toString());
             ps.setString(3, record.getSha256Hash());
-            ps.setString(4, record.getMediaDate() != null
+            ps.setString(4, record.getPartialHash());
+            ps.setString(5, record.getMediaDate() != null
                 ? record.getMediaDate().format(ISO_FMT) : null);
-            ps.setString(5, record.getLastProcessedAt().toString());
-            ps.setString(6, record.getFilePath());
+            ps.setString(6, record.getLastProcessedAt().toString());
+            ps.setString(7, record.getFilePath());
             ps.executeUpdate();
         }
     }
@@ -104,6 +106,42 @@ public class HashIndexDao {
     public void clearAll() throws SQLException {
         try (java.sql.Statement st = database.getConnection().createStatement()) {
             st.executeUpdate("DELETE FROM FILE_HASH_INDEX");
+            st.executeUpdate("DELETE FROM HASH_CANONICAL");
+        }
+    }
+
+    /**
+     * Atomically claims {@code sha256Hash} for {@code filePath} in HASH_CANONICAL.
+     *
+     * <p>This single statement replaces the former check-then-act pair (findBySha256 followed by a
+     * path comparison), which was correct only because UNIQUE(SHA256_HASH) on FILE_HASH_INDEX
+     * happened to serialise it. The primary key on HASH_CANONICAL now provides that serialisation
+     * explicitly, and FILE_HASH_INDEX is free to cache every path.
+     *
+     * @return true if this path claimed the hash (it is canonical); false if another path already
+     *         holds it, meaning this file is a content duplicate
+     */
+    public boolean claimCanonical(String sha256Hash, String filePath) throws SQLException {
+        String sql = """
+            INSERT OR IGNORE INTO HASH_CANONICAL (SHA256_HASH, CANONICAL_PATH, FIRST_SEEN_AT)
+            VALUES (?, ?, ?)
+            """;
+        try (PreparedStatement ps = database.getConnection().prepareStatement(sql)) {
+            ps.setString(1, sha256Hash);
+            ps.setString(2, filePath);
+            ps.setString(3, Instant.now().toString());
+            return ps.executeUpdate() == 1;
+        }
+    }
+
+    /** The path that currently owns this hash, or null if unclaimed. */
+    public String findCanonicalPath(String sha256Hash) throws SQLException {
+        String sql = "SELECT CANONICAL_PATH FROM HASH_CANONICAL WHERE SHA256_HASH = ?";
+        try (PreparedStatement ps = database.getConnection().prepareStatement(sql)) {
+            ps.setString(1, sha256Hash);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString(1) : null;
+            }
         }
     }
 
@@ -115,6 +153,7 @@ public class HashIndexDao {
         r.setFileSizeBytes(rs.getLong("FILE_SIZE"));
         r.setFileModificationTs(Instant.parse(rs.getString("FILE_MODIFICATION_TS")));
         r.setSha256Hash(rs.getString("SHA256_HASH"));
+        r.setPartialHash(rs.getString("PARTIAL_HASH"));
         String mediaDateStr = rs.getString("MEDIA_DATE");
         if (mediaDateStr != null) {
             r.setMediaDate(LocalDateTime.parse(mediaDateStr, ISO_FMT));

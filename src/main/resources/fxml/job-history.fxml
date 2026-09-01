@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.geometry.*?>
+
+<BorderPane xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.mediascanner.ui.JobHistoryController"
+            prefWidth="900" prefHeight="700">
+
+    <top>
+        <VBox styleClass="header-bar">
+            <padding><Insets top="12" right="16" bottom="12" left="16"/></padding>
+            <Label text="Job History" styleClass="app-title"/>
+            <Label fx:id="statusLabel" text="" styleClass="subtle"/>
+        </VBox>
+    </top>
+
+    <center>
+        <TableView fx:id="jobTable">
+            <columns>
+                <TableColumn fx:id="startedColumn"    text="Started"    prefWidth="150"/>
+                <TableColumn fx:id="statusColumn"     text="Status"     prefWidth="90"/>
+                <TableColumn fx:id="jobIdColumn"      text="Job ID"     prefWidth="170"/>
+                <TableColumn fx:id="processedColumn"  text="Processed"  prefWidth="90"/>
+                <TableColumn fx:id="skippedColumn"    text="Skipped"    prefWidth="80"/>
+                <TableColumn fx:id="failedColumn"     text="Failed"     prefWidth="80"/>
+                <TableColumn fx:id="duplicatesColumn" text="Duplicates" prefWidth="90"/>
+                <TableColumn fx:id="dataColumn"       text="Data"       prefWidth="100"/>
+            </columns>
+            <placeholder>
+                <Label text="No jobs have been run yet."/>
+            </placeholder>
+        </TableView>
+    </center>
+
+    <bottom>
+        <HBox spacing="12" alignment="CENTER_RIGHT">
+            <padding><Insets top="8" right="16" bottom="8" left="16"/></padding>
+            <Button fx:id="refreshButton" text="Refresh" onAction="#onRefresh"/>
+            <Button fx:id="openButton" text="Open Summary" onAction="#onOpenSummary"/>
+            <Button fx:id="deleteButton" text="Delete" onAction="#onDelete"/>
+            <Button text="Close" onAction="#onClose"/>
+        </HBox>
+    </bottom>
+</BorderPane>

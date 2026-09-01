@@ -89,6 +89,10 @@
                     </GridPane>
                 </TitledPane>
 
+                <TitledPane text="Throughput" expanded="true">
+                    <VBox fx:id="chartContainer" spacing="8" minHeight="330"/>
+                </TitledPane>
+
             </VBox>
         </ScrollPane>
     </center>
@@ -98,7 +102,8 @@
             <padding><Insets top="8" right="16" bottom="8" left="16"/></padding>
             <Button text="View Failure Report" onAction="#onViewFailureReport"/>
             <Button text="Export JSON" onAction="#onExportJson"/>
-            <Button text="Export Text" onAction="#onExportText"/>
+            <Button text="Export CSV" onAction="#onExportCsv"/>
+            <Button text="Export HTML" onAction="#onExportHtml"/>
             <Button text="Start New Scan" onAction="#onStartNewScan"/>
         </HBox>
     </bottom>

@@ -11,7 +11,7 @@ import java.io.IOException;
 public class ScreenNavigator {
 
     public enum ScreenType {
-        CONFIGURATION, DASHBOARD, SUMMARY
+        CONFIGURATION, DASHBOARD, SUMMARY, JOB_HISTORY
     }
 
     private static final Logger log = LoggerFactory.getLogger(ScreenNavigator.class);
@@ -28,6 +28,7 @@ public class ScreenNavigator {
             case CONFIGURATION -> "/fxml/main.fxml";
             case DASHBOARD -> "/fxml/dashboard.fxml";
             case SUMMARY -> "/fxml/summary.fxml";
+            case JOB_HISTORY -> "/fxml/job-history.fxml";
         };
 
         try {

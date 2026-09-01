@@ -203,6 +203,36 @@
                 </configuration>
             </plugin>
 
+            <!--
+              Maven Failsafe (integration test runner).
+              Surefire's default includes (Test*, *Test, *Tests, *TestCase) do not match *IT.java,
+              so without this plugin DatabaseIT, HashIndexDaoIT, ResumeIT and FullPipelineIT are
+              compiled and then never executed by any build. Bound to `verify`.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <argLine>
+                        --add-opens=java.base/java.lang=ALL-UNNAMED
+                        --add-opens=java.base/java.util=ALL-UNNAMED
+                        --add-opens=java.base/java.nio=ALL-UNNAMED
+                        --add-opens=java.base/java.io=ALL-UNNAMED
+                        --add-opens=java.base/java.time=ALL-UNNAMED
+                        -Djdk.attach.allowAttachSelf=true
+                    </argLine>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
             <!-- JavaFX Maven Plugin -->
             <plugin>
                 <groupId>org.openjfx</groupId>

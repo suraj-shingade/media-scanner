@@ -12,6 +12,22 @@
     -fx-text-fill: white;
 }
 
+/* Secondary text. On the dark header bar it must be light, otherwise it inherits the
+   default dark fill and is invisible against the navy background. */
+.subtle {
+    -fx-font-size: 12px;
+    -fx-text-fill: #6c757d;
+}
+
+.header-bar .subtle {
+    -fx-text-fill: #bdc7d1;
+}
+
+.chart-placeholder {
+    -fx-text-fill: #6c757d;
+    -fx-font-size: 13px;
+}
+
 .section-label {
     -fx-font-weight: bold;
     -fx-font-size: 13px;

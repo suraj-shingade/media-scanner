@@ -127,6 +127,38 @@ public class JobStatisticsDao {
         }
     }
 
+    /** All recorded jobs, newest first, for the Job History screen (FR-005-008). */
+    public java.util.List<JobStatistics> findAll() throws SQLException {
+        String sql = "SELECT * FROM JOB_STATISTICS ORDER BY START_TIME DESC";
+        java.util.List<JobStatistics> jobs = new java.util.ArrayList<>();
+        try (PreparedStatement ps = database.getConnection().prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                jobs.add(mapRow(rs));
+            }
+        }
+        return jobs;
+    }
+
+    public JobStatistics findByJobId(String jobId) throws SQLException {
+        String sql = "SELECT * FROM JOB_STATISTICS WHERE JOB_ID = ?";
+        try (PreparedStatement ps = database.getConnection().prepareStatement(sql)) {
+            ps.setString(1, jobId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? mapRow(rs) : null;
+            }
+        }
+    }
+
+    /** Removes the job row only. Callers must also clear its events and samples. */
+    public int deleteJob(String jobId) throws SQLException {
+        String sql = "DELETE FROM JOB_STATISTICS WHERE JOB_ID = ?";
+        try (PreparedStatement ps = database.getConnection().prepareStatement(sql)) {
+            ps.setString(1, jobId);
+            return ps.executeUpdate();
+        }
+    }
+
     private JobStatistics mapRow(ResultSet rs) throws SQLException {
         JobStatistics s = new JobStatistics();
         s.setJobId(rs.getString("JOB_ID"));

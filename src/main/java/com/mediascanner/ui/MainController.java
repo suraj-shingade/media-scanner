@@ -64,6 +64,7 @@ public class MainController implements Initializable {
         new Thread(() -> {
             try {
                 database = new Database(config.getDbPath());
+                MediaScannerApp.setDatabase(database);
                 if (database.isCorruptionWarning()) {
                     Platform.runLater(() -> showAlert("Database Warning",
                         "Hash cache lost — all files will be re-hashed this run."));

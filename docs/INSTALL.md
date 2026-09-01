@@ -89,3 +89,29 @@ See [`specs/003-installable-builds/quickstart.md`](../specs/003-installable-buil
 | JDK 21 (any vendor, x64) | 21.x | Must be `JAVA_HOME` |
 | WiX Toolset | v3.x (NOT v4) | Required by jpackage for MSI generation |
 | Maven | 3.8+ | Standard project build tool |
+
+## Job reports
+
+Every job that skips, fails, or deduplicates a file leaves a report inside the target archive:
+
+| File | Contents |
+|------|----------|
+| `_skipped/skipped-report.json` | Every skipped file with its full source path, size, and reason (`EMPTY_FILE`, `SMALL_FILE`, `UNSUPPORTED_FORMAT`, `IGNORE_RULE_MATCHED`, `METADATA_MISSING`) |
+| `_failures/failure-report.json` | Every file that could not be read as valid media, with the specific failure reason |
+| `_duplicates/duplicate-report.json` | Every content duplicate with its SHA-256, the canonical file it matched, and the total bytes saved |
+
+A report is written only when that outcome actually occurred, so a clean job leaves no empty folders
+behind. Each report is also kept per job as `<name>-<jobId>.json`, so running a second job against the
+same archive does not overwrite the first one's report.
+
+If a report is capped (very large jobs), the file says so explicitly via a `truncated` field and still
+reports the true total — the complete record stays available in the app under **View -> Job History**.
+
+## Job history
+
+**View -> Job History** (`Ctrl+4` / `Cmd+4`) lists every job the application has run, newest first, and
+survives restarts. Select a job to reopen its full summary and throughput chart, or export the summary
+as JSON, CSV, or a self-contained HTML page.
+
+Deleting a job from history removes only its stored records. It never touches files in your archive, and
+report files already written to the archive are left in place.
