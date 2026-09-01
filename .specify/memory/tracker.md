@@ -12,9 +12,9 @@
 
 ## Project Status
 
-**Phase**: Features 001–005 implemented. Build and full test suite verified for the first time.
-**Overall Completion**: ~85% of the full BRD. FR-019, FR-020, FR-023 and FR-031 are now closed. True
-resume (FR-017/FR-022 at the job level) remains the main unbuilt requirement.
+**Phase**: Features 001–005 and 007 implemented, tested, and verified at scale.
+**Overall Completion**: ~92% of the full BRD. FR-019, FR-020, FR-023, FR-031 and true resume
+(FR-017/FR-022) are all closed. Feature 006 (Cleanup Tool) is being spec'd in a separate session.
 **Constitution Version**: 1.1.0
 
 ---
@@ -28,7 +28,7 @@ resume (FR-017/FR-022 at the job level) remains the main unbuilt requirement.
 | Plan | `specs/005-job-reports-history/plan.md` ✅ |
 | Tasks | `specs/005-job-reports-history/tasks.md` — 46 of 48 done; T035 declined with rationale, T047 (manual acceptance) outstanding |
 
-**Build status**: `mvn verify` — **187 tests, 0 failures** (124 unit, 63 integration).
+**Build status**: `./mvnw clean verify` — **192 tests, 0 failures** (124 unit, 68 integration), green in CI on ubuntu, macOS and Windows.
 
 ---
 
@@ -96,11 +96,11 @@ resume (FR-017/FR-022 at the job level) remains the main unbuilt requirement.
 | B002 | `/brd` folder was empty | Suraj | ✅ RESOLVED — BRD.docx + FRD.docx present | 2026-06-03 |
 | B003 | Maven not installed; full test suite had never been run | Suraj | 🟢 RESOLVED — Maven 3.9.9 installed, `mvnw`/`mvnw.cmd`/`.mvn/wrapper` committed, and `./mvnw clean verify` passes (187 tests) | — |
 | B004 | No CI on push/PR — `release.yml` only fired on `v*.*.*` tags | Suraj | 🟢 RESOLVED — `.github/workflows/build.yml` runs on every branch push and PR. **Verified green on ubuntu, macOS and Windows** (run 33519273821). First run failed because `mvnw` was committed 100644; fixed with `git update-index --chmod=+x` | — |
-| B005 | Resume is cosmetic — a "resumed" job re-copies everything already transferred as `IMG001(1).jpg` duplicates | Suraj | 🔴 OPEN | Audit H5. Cut feature **007** for this (006 is taken by the Cleanup Tool) |
+| B005 | Resume was cosmetic — a "resumed" job re-copied everything already transferred | Suraj | 🟢 RESOLVED — feature 007. Verified at 52 552-file scale: a re-run copies zero bytes and the archive does not grow | — |
 | B006 | The 4 `*IT` classes had never run — Surefire without Failsafe, and Surefire defaults do not match `*IT.java` | Suraj | 🟢 RESOLVED — `maven-failsafe-plugin` added; all four passed on first execution | — |
-| B007 | Nobody had driven the GUI | Suraj | 🟡 MOSTLY RESOLVED — app launched against a sandboxed home and driven through Job History → row selection → Open Summary → throughput charts. Two UI defects found and fixed. **Still not done**: a run against a real 50 000+ file archive, and the export file dialogs | Run the remaining half of `specs/005-job-reports-history/quickstart.md` |
+| B007 | Nobody had driven the GUI or run at scale | Suraj | 🟢 RESOLVED — GUI driven through Job History → Open Summary → charts (two UI defects found and fixed), and a 52 552-file acceptance run completed. **Remaining gaps are narrow**: the export file dialogs and the new resume dialog have not been clicked by hand | — |
 
-**B005 is the only meaningful open item left.** B007 needs a real large-archive run to fully close.
+**No blockers are open.** The narrow remaining gaps are recorded against B007.
 
 ---
 
@@ -265,6 +265,62 @@ test covers — atomic-move fast path and unreadable-directory tolerance with a 
 (8 checks, all passed). **The 13 tests needing sqlite-jdbc or Tika at runtime were not run.**
 
 **Next action**: see Session 6 below.
+
+---
+
+### 2026-09-01 — Session 8 (Feature 007 true resume + 52k-file acceptance run)
+
+**Work done**:
+- **CI now prints test totals** to the job log and run summary, and hard-fails if zero tests run — so
+  the H8 failure mode (tests silently not executing while CI stays green) cannot recur. Green on all
+  three platforms.
+- **Implemented feature 007 (True Resume)**, closing **B005**, the largest remaining correctness gap.
+- **Ran the acceptance protocol at scale** (task T047), closing **B007**.
+
+**The two defects were masking each other**, which is why five features shipped without anyone noticing:
+1. *Self-duplicate* (introduced by feature 005): the atomic `HASH_CANONICAL` claim returned "already
+   claimed" without checking whether the claimant was the same path, so every file on a second run was
+   reported as a duplicate of itself.
+2. *Self-collision* (present since feature 001): `resolveCollisionFreePath` ran before anything checked
+   whether the file at the destination was this same file.
+
+Bug 1 hid bug 2: misrouting every file as a duplicate meant nothing reached the transfer path, so
+nothing was re-copied. Fixing bug 1 alone made the archive **double** on a re-run (8 files → 16). Both
+are fixed together. A test that runs a job only once cannot see either — `RerunAndResumeIT` runs every
+scenario twice.
+
+**Resume design**: the archive is the ledger. `HASH_CANONICAL` gains `DESTINATION_PATH` /
+`DESTINATION_SIZE` (migration V003); a later run that meets the same content skips it when that
+destination still holds it. One stat per file, no content reads, and no per-file resume table — a
+`JOB_PROGRESS` ledger would have been ~1 GB and 10M rows per job for information the archive already
+encodes.
+
+**Acceptance run — 52 552 files (1.5 GB), 16 threads**:
+
+| | Pass 1 (cold) | Pass 2 (resume) |
+|---|---|---|
+| duration | 145 s | **16 s** |
+| files copied | 49 700 | **0** |
+| already in archive | 0 | 49 700 |
+| throughput | 343 files/sec, 8.2 MB/sec | 3 106 files/sec |
+| files in archive | 49 700 | 49 700 (unchanged) |
+
+2 300 duplicates detected (54.9 MB saved), 502 skipped, 50 failed, 36 date folders created. All three
+report counts reconcile exactly against the job statistics (**SC-002**). Peak heap **477 MB** across
+both passes — the bounded queue holds, memory does not scale with file count. No collision-suffixed
+self-copies. All seven acceptance checks passed.
+
+**A note on benchmarking**: the first two corpus attempts were wrong in ways that made the engine look
+wrong — the first generated only 1 300 distinct images (so 50 700 "duplicates" were real and correct),
+the second set mtime but not creation time, so every file landed in one folder because these JPEGs have
+no EXIF and FR-006 falls back to creation date. Both were corpus bugs, not engine bugs. Worth
+remembering when writing the next benchmark.
+
+**Next action**:
+1. Open PRs for `005-job-reports-history` and `007-true-resume` (gh CLI is not authenticated here)
+2. Click through the resume dialog and the export file dialogs by hand — the only untested UI paths
+3. Address the open audit findings: M3 (corrupt-media detection is extension/magic-byte only),
+   M4/M5 (disk I/O rates, worker thread count), M9 (statistics read/write race)
 
 ---
 

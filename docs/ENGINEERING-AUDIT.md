@@ -71,9 +71,20 @@ visually. Two UI defects were found this way and fixed:
 
 Neither was reachable by any automated test, which is the argument for actually running the thing.
 
-**Still not verified**: no run against a real 50 000+ file archive, the export file dialogs were not
-exercised (`SummaryExporter` has 10 unit tests instead), and the `build.yml` CI workflow has never
-executed.
+A **52 552-file acceptance run** has since been completed (1.5 GB, 16 threads):
+
+| | Pass 1 (cold) | Pass 2 (re-run) |
+|---|---|---|
+| duration | 145 s | 16 s |
+| files copied | 49 700 | 0 |
+| throughput | 343 files/sec, 8.2 MB/sec | 3 106 files/sec |
+| archive size | 49 700 | 49 700 (unchanged) |
+
+2 300 duplicates detected, 502 skipped, 50 failed, 36 date folders. All three report counts reconcile
+exactly against the job statistics. **Peak heap 477 MB** across both passes, confirming the C2 bounded
+queue holds and memory does not scale with file count.
+
+**Still not verified**: the export file dialogs and the new resume dialog have not been clicked by hand.
 
 > **Note for anyone repeating this**: screenshot the app from a **DPI-aware** process. Windows here runs
 > at 150%; a DPI-unaware capture crops a third off the right and bottom and puts synthetic clicks ~33%
@@ -147,13 +158,20 @@ hash values", and neither is recorded anywhere. There is no way to review what w
 The class is complete and correct. It is referenced by exactly nothing: no sampler feeds it, no view
 reads it. The historical throughput graph does not exist.
 
-### H5. Resume is cosmetic → **recommend feature 007**
+### H5. Resume is cosmetic → **FIXED in feature 007**
 `CheckpointManager` faithfully writes `checkpoint.json` every 1 000 files / 60 s, and `MainController`
 detects an interrupted job — then `offerResume()` shows a dialog whose OK branch sets a label reading
 "Import the job state file to resume." `ScanEngine.start()` has no notion of resuming: it re-walks the
 whole tree and reprocesses every file. Worse, because `resolveCollisionFreePath` runs first, a
 "resumed" job re-copies everything already transferred as `IMG001(1).jpg`, `IMG001(2).jpg`, silently
 doubling the archive. This is the largest correctness gap remaining and deserves its own feature.
+
+**Update (feature 007)**: the picture was worse than this finding described, and also better. A second
+defect introduced by feature 005 — the atomic `HASH_CANONICAL` claim not checking whether the claimant
+was the same path — meant every file on a re-run was reported as a duplicate of itself, which
+*prevented* the re-copy described above. The two bugs masked each other. Fixing only the claim guard
+made an 8-file archive become 16 on a re-run, which is how the duplication was finally reproduced.
+Both are fixed, and a 52 552-file re-run now copies zero bytes in 16 s against 145 s cold.
 
 ### H6. ETA was always zero — **fixed**
 `ProgressTracker.setFilesTotal` was never called, so `filesTotal` stayed 0, `remaining` went negative,

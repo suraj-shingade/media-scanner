@@ -145,6 +145,43 @@ public class HashIndexDao {
         }
     }
 
+    /**
+     * Records where the canonical copy of this content was actually written, so a later run can
+     * tell "already transferred" from "new file, colliding name" (feature 007).
+     */
+    public void recordCanonicalDestination(String sha256Hash, String destinationPath,
+                                           long destinationSize) throws SQLException {
+        String sql = """
+            UPDATE HASH_CANONICAL
+               SET DESTINATION_PATH = ?, DESTINATION_SIZE = ?
+             WHERE SHA256_HASH = ?
+            """;
+        try (PreparedStatement ps = database.getConnection().prepareStatement(sql)) {
+            ps.setString(1, destinationPath);
+            ps.setLong(2, destinationSize);
+            ps.setString(3, sha256Hash);
+            ps.executeUpdate();
+        }
+    }
+
+    /** Where this content was written, or null if it was never successfully transferred. */
+    public TransferredCopy findCanonicalDestination(String sha256Hash) throws SQLException {
+        String sql = "SELECT DESTINATION_PATH, DESTINATION_SIZE FROM HASH_CANONICAL"
+                   + " WHERE SHA256_HASH = ?";
+        try (PreparedStatement ps = database.getConnection().prepareStatement(sql)) {
+            ps.setString(1, sha256Hash);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                String path = rs.getString("DESTINATION_PATH");
+                if (path == null) return null;
+                return new TransferredCopy(path, rs.getLong("DESTINATION_SIZE"));
+            }
+        }
+    }
+
+    /** A completed transfer: where it landed and how big it was. */
+    public record TransferredCopy(String path, long size) {}
+
     private FileHashRecord mapRow(ResultSet rs) throws SQLException {
         FileHashRecord r = new FileHashRecord();
         r.setId(rs.getLong("ID"));

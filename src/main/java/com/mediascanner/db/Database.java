@@ -33,7 +33,8 @@ public class Database implements AutoCloseable {
     /** Migration scripts under {@code /db/migrations}, in apply order. Add new versions here. */
     private static final List<String> MIGRATIONS = List.of(
         "V001__initial_schema.sql",
-        "V002__job_reports.sql"
+        "V002__job_reports.sql",
+        "V003__resume_destination.sql"
     );
 
     private final Path dbPath;

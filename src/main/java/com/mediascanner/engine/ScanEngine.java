@@ -59,6 +59,10 @@ public class ScanEngine {
     /** Destination folders already created this run. Shared across workers, so it must be concurrent. */
     private final Set<String> destFolderCache = ConcurrentHashMap.newKeySet();
 
+    /** Files an earlier run already placed in the archive; the measure of what a resume saved. */
+    private final java.util.concurrent.atomic.AtomicLong filesAlreadyPresent =
+        new java.util.concurrent.atomic.AtomicLong();
+
     private final JobReportService reportService;
     private final ThroughputHistory throughputHistory = new ThroughputHistory();
     private JobEventRecorder recorder;
@@ -91,6 +95,7 @@ public class ScanEngine {
         jobStatisticsDao.insert(jobStatistics);
 
         destFolderCache.clear();
+        filesAlreadyPresent.set(0);
         recentFiles.clear();
         currentFilePath.set("");
 
@@ -217,16 +222,26 @@ public class ScanEngine {
             resolveDestination(mediaFile, job, extractor);
 
             String hash = hashEngine.computeHash(path, mediaFile);
-            // One atomic statement decides this: whoever inserts the row owns the content. The old
-            // findBySha256-then-compare-paths pair was only correct because a UNIQUE constraint
+            // One atomic statement decides ownership: whoever inserts the row owns the content. The
+            // old findBySha256-then-compare-paths pair was only correct because a UNIQUE constraint
             // happened to serialise it.
             if (!hashIndexDao.claimCanonical(hash, mediaFile.getAbsolutePath())) {
-                handleDuplicate(mediaFile, job, transfer, hash,
-                    hashIndexDao.findCanonicalPath(hash));
-                return;
+                String canonicalPath = hashIndexDao.findCanonicalPath(hash);
+                // A re-run or a resume re-walks files this source already claimed. The holder being
+                // this very path means we are looking at our own earlier work, not a duplicate —
+                // without this guard every file in a second run is reported as its own duplicate.
+                if (canonicalPath != null
+                        && !canonicalPath.equals(mediaFile.getAbsolutePath())) {
+                    handleDuplicate(mediaFile, job, transfer, hash, canonicalPath);
+                    return;
+                }
+                if (alreadyTransferred(mediaFile, hash)) {
+                    countAsAlreadyPresent(mediaFile, checkpointManager);
+                    return;
+                }
             }
 
-            performTransfer(path, mediaFile, job, transfer);
+            performTransfer(path, mediaFile, job, transfer, hash);
             progressTracker.incrementProcessed(mediaFile.getSizeBytes());
             checkpointManager.onFileProcessed();
             addToRecentFiles(mediaFile.getFileName());
@@ -332,7 +347,7 @@ public class ScanEngine {
     }
 
     private void performTransfer(Path src, MediaFile mediaFile, Job job,
-                                  FileTransfer transfer) throws IOException {
+                                  FileTransfer transfer, String hash) throws IOException {
         Path destination = transfer.resolveCollisionFreePath(
             Paths.get(mediaFile.getDestinationPath()));
         mediaFile.setDestinationPath(destination.toString());
@@ -357,6 +372,51 @@ public class ScanEngine {
             jobStatistics.setTotalBytesProcessed(
                 jobStatistics.getTotalBytesProcessed() + mediaFile.getSizeBytes());
         }
+
+        // Remember where it landed. A later run reads this back instead of recomputing the
+        // destination, which is what makes resume safe once a collision suffix has been applied.
+        try {
+            hashIndexDao.recordCanonicalDestination(hash, destination.toString(),
+                mediaFile.getSizeBytes());
+        } catch (SQLException e) {
+            log.warn("Could not record destination for {}: {}", destination, e.getMessage());
+        }
+    }
+
+    /**
+     * True when this exact content is already sitting at the destination recorded by an earlier
+     * run. Costs one stat call and no file reads — the hash came from the Stage 1 index cache.
+     *
+     * <p>If the recorded destination is missing or the wrong size, the earlier transfer did not
+     * finish and the file is transferred again.
+     */
+    private boolean alreadyTransferred(MediaFile mediaFile, String hash) {
+        try {
+            HashIndexDao.TransferredCopy copy = hashIndexDao.findCanonicalDestination(hash);
+            if (copy == null) return false;
+            Path destination = Paths.get(copy.path());
+            return Files.exists(destination) && Files.size(destination) == copy.size();
+        } catch (Exception e) {
+            log.debug("Could not verify prior transfer of {}: {}",
+                mediaFile.getAbsolutePath(), e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * A file an earlier run already placed in the archive. Counted as processed so percent-complete
+     * and ETA stay meaningful across a resume, but not counted as copied or moved — no bytes moved
+     * this run.
+     */
+    private void countAsAlreadyPresent(MediaFile mediaFile, CheckpointManager checkpointManager) {
+        mediaFile.setOutcome(MediaFile.Outcome.TRANSFERRED);
+        synchronized (jobStatistics) {
+            jobStatistics.setFilesProcessed(jobStatistics.getFilesProcessed() + 1);
+        }
+        filesAlreadyPresent.incrementAndGet();
+        progressTracker.incrementProcessed(0);
+        checkpointManager.onFileProcessed();
+        log.debug("Already in archive, skipping: {}", mediaFile.getAbsolutePath());
     }
 
     private void addToRecentFiles(String fileName) {
@@ -535,6 +595,9 @@ public class ScanEngine {
         if (samplerPool != null) samplerPool.shutdownNow();
         if (resourceMonitor != null) resourceMonitor.stop();
     }
+
+    /** Count of files an earlier run had already transferred (feature 007 resume). */
+    public long getFilesAlreadyPresent() { return filesAlreadyPresent.get(); }
 
     /** Live throughput window for the dashboard chart. */
     public ThroughputHistory getThroughputHistory() { return throughputHistory; }

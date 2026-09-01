@@ -118,6 +118,18 @@ public class JobStatisticsDao {
         }
     }
 
+    /**
+     * Marks a job left RUNNING or PAUSED by a crash. Without this, findActiveJob keeps offering the
+     * same dead job on every launch.
+     */
+    public void markInterrupted(String jobId) throws SQLException {
+        String sql = "UPDATE JOB_STATISTICS SET STATUS = 'INTERRUPTED' WHERE JOB_ID = ?";
+        try (PreparedStatement ps = database.getConnection().prepareStatement(sql)) {
+            ps.setString(1, jobId);
+            ps.executeUpdate();
+        }
+    }
+
     public void updateStatus(String jobId, String status) throws SQLException {
         String sql = "UPDATE JOB_STATISTICS SET STATUS = ? WHERE JOB_ID = ?";
         try (PreparedStatement ps = database.getConnection().prepareStatement(sql)) {

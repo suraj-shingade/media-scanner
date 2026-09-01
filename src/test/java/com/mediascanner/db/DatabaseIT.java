@@ -76,8 +76,20 @@ class DatabaseIT {
         try (Statement stmt = db.getConnection().createStatement();
              ResultSet rs = stmt.executeQuery("PRAGMA user_version")) {
             assertThat(rs.next()).isTrue();
-            assertThat(rs.getInt(1)).isEqualTo(2);
+            assertThat(rs.getInt(1)).isEqualTo(3);
         }
+    }
+
+    /** V003: the resume ledger — where each canonical file was actually written. */
+    @Test
+    @Order(11)
+    void testCanonicalDestinationColumnsExist() throws SQLException {
+        java.util.Set<String> cols = new java.util.HashSet<>();
+        try (Statement stmt = db.getConnection().createStatement();
+             ResultSet rs = stmt.executeQuery("PRAGMA table_info('HASH_CANONICAL')")) {
+            while (rs.next()) cols.add(rs.getString("name"));
+        }
+        assertThat(cols).contains("DESTINATION_PATH", "DESTINATION_SIZE");
     }
 
     /**

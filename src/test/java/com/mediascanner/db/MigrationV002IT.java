@@ -119,7 +119,7 @@ class MigrationV002IT {
             try (Statement stmt = db.getConnection().createStatement();
                  ResultSet rs = stmt.executeQuery("PRAGMA user_version")) {
                 assertThat(rs.next()).isTrue();
-                assertThat(rs.getInt(1)).isEqualTo(2);
+                assertThat(rs.getInt(1)).as("all migrations applied, latest is V003").isEqualTo(3);
             }
         }
     }
