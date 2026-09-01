@@ -76,7 +76,7 @@ class DatabaseIT {
         try (Statement stmt = db.getConnection().createStatement();
              ResultSet rs = stmt.executeQuery("PRAGMA user_version")) {
             assertThat(rs.next()).isTrue();
-            assertThat(rs.getInt(1)).isEqualTo(3);
+            assertThat(rs.getInt(1)).isEqualTo(4);
         }
     }
 

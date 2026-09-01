@@ -31,6 +31,7 @@ class RerunAndResumeIT {
 
     private Path sourceDir;
     private Path targetDir;
+    private Path dbDir;
     private Database db;
     private AppConfig config;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -39,14 +40,36 @@ class RerunAndResumeIT {
     void setUp() throws Exception {
         sourceDir = Files.createDirectories(root.resolve("source"));
         targetDir = Files.createDirectories(root.resolve("archive"));
-        db = new Database(root.resolve("db").resolve("test.db"));
+        dbDir = createDbDir();
+        db = new Database(dbDir.resolve("test.db"));
         config = new AppConfig();
     }
 
     @AfterEach
     void tearDown() {
         if (db != null) db.close();
+        deleteQuietly(dbDir);
     }
+
+    /**
+     * The SQLite database deliberately lives outside the {@code @TempDir}. On Windows the WAL and
+     * SHM files can linger for a moment after close, and JUnit deletes a TempDir immediately after
+     * the teardown method — which made this class fail intermittently under full-suite load while
+     * passing in isolation. Cleaning it up ourselves, tolerantly, removes the race.
+     */
+    private static Path createDbDir() throws Exception {
+        return Files.createTempDirectory("ms-test-db");
+    }
+
+    private static void deleteQuietly(Path dir) {
+        if (dir == null) return;
+        try (java.util.stream.Stream<Path> walk = Files.walk(dir)) {
+            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                try { Files.deleteIfExists(p); } catch (Exception ignored) { }
+            });
+        } catch (Exception ignored) { }
+    }
+
 
     private byte[] jpeg(long seed) throws Exception {
         BufferedImage img = new BufferedImage(320, 320, BufferedImage.TYPE_INT_RGB);

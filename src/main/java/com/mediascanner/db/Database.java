@@ -34,7 +34,8 @@ public class Database implements AutoCloseable {
     private static final List<String> MIGRATIONS = List.of(
         "V001__initial_schema.sql",
         "V002__job_reports.sql",
-        "V003__resume_destination.sql"
+        "V003__resume_destination.sql",
+        "V004__disk_throughput.sql"
     );
 
     private final Path dbPath;

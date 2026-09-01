@@ -106,7 +106,8 @@ public class ScanEngine {
         // Files excluded during the walk never reach a worker, so they are recorded here (FR-020).
         scanner.setSkipListener((path, reason) -> recordWalkSkip(job, path, reason));
         FileValidator validator = new FileValidator(job.getImageSizeThresholdKb(),
-                                                    job.getVideoSizeThresholdKb());
+                                                    job.getVideoSizeThresholdKb(),
+                                                    config.isDeepValidationEnabled());
         MetadataExtractor extractor = new MetadataExtractor();
         HashEngine hashEngine = new HashEngine(hashIndexDao);
         FileTransfer transfer = new FileTransfer(job.getTargetPath());
@@ -550,6 +551,15 @@ public class ScanEngine {
     private void startThroughputSampling(Job job) {
         throughputHistory.clear();
         resourceMonitor = new ResourceMonitor();
+        // Give the monitor real numbers to report instead of the hardcoded zeros FR-030 used to
+        // show: bytes this job has read, bytes it has written, and workers actually busy.
+        resourceMonitor.bindJobSources(
+            () -> snapshotStatistics().getTotalBytesProcessed(),
+            () -> {
+                JobStatistics snap = snapshotStatistics();
+                return snap.getTotalBytesCopied() + snap.getTotalBytesMoved();
+            },
+            () -> workerPool != null ? workerPool.getActiveCount() : 0);
         resourceMonitor.start();
 
         long startMillis = System.currentTimeMillis();
@@ -588,6 +598,8 @@ public class ScanEngine {
             jobStatistics.setPeakMemoryGb(Math.max(jobStatistics.getPeakMemoryGb(), memGb));
             jobStatistics.setAvgFilesPerSec(snap.avgFilesPerSecJob);
             jobStatistics.setAvgMbPerSec(snap.avgMbPerSec5s);
+            jobStatistics.setPeakDiskReadMbSec(resourceMonitor.getPeakDiskReadMbSec());
+            jobStatistics.setPeakDiskWriteMbSec(resourceMonitor.getPeakDiskWriteMbSec());
         }
     }
 
@@ -595,6 +607,25 @@ public class ScanEngine {
         if (samplerPool != null) samplerPool.shutdownNow();
         if (resourceMonitor != null) resourceMonitor.stop();
     }
+
+    /**
+     * A coherent copy of the job statistics, taken under the same lock the workers write through.
+     * Reading the live object field by field can mix counters from different instants.
+     */
+    public JobStatistics snapshotStatistics() {
+        if (jobStatistics == null) return new JobStatistics();
+        synchronized (jobStatistics) {
+            return jobStatistics.copy();
+        }
+    }
+
+    /** Scan workers currently executing a file. */
+    public int getActiveWorkerCount() {
+        return workerPool != null ? workerPool.getActiveCount() : 0;
+    }
+
+    /** Live resource sampler for this job, or null when no job has run. */
+    public ResourceMonitor getResourceMonitor() { return resourceMonitor; }
 
     /** Count of files an earlier run had already transferred (feature 007 resume). */
     public long getFilesAlreadyPresent() { return filesAlreadyPresent.get(); }
