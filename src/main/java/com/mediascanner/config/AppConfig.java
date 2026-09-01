@@ -32,6 +32,7 @@ public class AppConfig {
     private int imageSizeThresholdKb;
     private int videoSizeThresholdKb;
     private boolean highPriorityMode;
+    private boolean deepValidationEnabled;
     private Job.FolderPattern folderPattern;
     private Job.DuplicatePolicy duplicatePolicy;
     private List<IgnoreRule> ignoreRules;
@@ -71,6 +72,10 @@ public class AppConfig {
             props.getProperty("validation.video.min.kb", "100"));
         highPriorityMode = Boolean.parseBoolean(
             props.getProperty("performance.high.priority", "false"));
+        // FR-012 corrupt-media detection. On by default: silently archiving damaged originals is
+        // the failure this gate exists to prevent.
+        deepValidationEnabled = Boolean.parseBoolean(
+            props.getProperty("validation.deep.enabled", "true"));
         darkMode = Boolean.parseBoolean(
             props.getProperty("ui.dark.mode", "false"));
 
@@ -113,6 +118,7 @@ public class AppConfig {
         props.setProperty("validation.image.min.kb", String.valueOf(imageSizeThresholdKb));
         props.setProperty("validation.video.min.kb", String.valueOf(videoSizeThresholdKb));
         props.setProperty("performance.high.priority", String.valueOf(highPriorityMode));
+        props.setProperty("validation.deep.enabled", String.valueOf(deepValidationEnabled));
         props.setProperty("ui.dark.mode", String.valueOf(darkMode));
         props.setProperty("folder.pattern", folderPattern.name());
         props.setProperty("duplicate.policy", duplicatePolicy.name());
@@ -164,6 +170,12 @@ public class AppConfig {
         this.videoSizeThresholdKb = videoSizeThresholdKb;
         save();
     }
+    public boolean isDeepValidationEnabled() { return deepValidationEnabled; }
+    public void setDeepValidationEnabled(boolean enabled) {
+        this.deepValidationEnabled = enabled;
+        save();
+    }
+
     public boolean isHighPriorityMode() { return highPriorityMode; }
     public void setHighPriorityMode(boolean highPriorityMode) {
         this.highPriorityMode = highPriorityMode;

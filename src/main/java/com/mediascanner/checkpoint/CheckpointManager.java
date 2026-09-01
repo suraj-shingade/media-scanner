@@ -88,16 +88,23 @@ public class CheckpointManager {
     }
 
     private CheckpointState buildState() {
+        // One lock acquisition for every counter. Reading them individually off the live object
+        // lets a checkpoint mix a file count from one instant with a byte count from another.
+        JobStatistics snapshot;
+        synchronized (stats) {
+            snapshot = stats.copy();
+        }
+
         CheckpointState state = new CheckpointState();
         state.setJobId(job.getJobId());
         state.setStatus(job.getStatus().name());
         state.setSourcePath(job.getSourcePath());
         state.setTargetPath(job.getTargetPath());
-        state.setProcessedFiles(stats.getFilesProcessed());
-        state.setFailedFiles(stats.getFilesFailed());
-        state.setSkippedFiles(stats.getFilesSkipped());
-        state.setEmptyFiles(stats.getEmptyFilesCount());
-        state.setSmallFiles(stats.getSmallFilesCount());
+        state.setProcessedFiles(snapshot.getFilesProcessed());
+        state.setFailedFiles(snapshot.getFilesFailed());
+        state.setSkippedFiles(snapshot.getFilesSkipped());
+        state.setEmptyFiles(snapshot.getEmptyFilesCount());
+        state.setSmallFiles(snapshot.getSmallFilesCount());
         state.setCheckpointTime(Instant.now().toString());
         return state;
     }

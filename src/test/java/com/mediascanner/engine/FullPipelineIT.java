@@ -36,11 +36,28 @@ class FullPipelineIT {
         Files.deleteIfExists(dbPath.getParent());
     }
 
+    /**
+     * Real JPEGs, not 20 KB of zero bytes. The original fixture wrote zeros and called them valid
+     * images; the header-only gate accepted that, so this test asserted for four features that
+     * undecodable content was valid media. FR-012 deep validation correctly rejects it.
+     */
+    private static byte[] realJpeg(long seed) throws Exception {
+        java.awt.image.BufferedImage img =
+            new java.awt.image.BufferedImage(240, 240, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.util.Random rnd = new java.util.Random(seed);
+        for (int x = 0; x < 240; x++) {
+            for (int y = 0; y < 240; y++) img.setRGB(x, y, rnd.nextInt(0xFFFFFF));
+        }
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(img, "jpg", out);
+        return out.toByteArray();
+    }
+
     @Test
     void testPipelineWithMixedFiles() throws Exception {
         // Create valid images
         for (int i = 0; i < 5; i++) {
-            Files.write(sourceDir.resolve("valid" + i + ".jpg"), new byte[20 * 1024]);
+            Files.write(sourceDir.resolve("valid" + i + ".jpg"), realJpeg(i));
         }
         // Empty file
         Files.write(sourceDir.resolve("empty.jpg"), new byte[0]);
@@ -75,7 +92,7 @@ class FullPipelineIT {
         HashEngine engine = new HashEngine(dao);
 
         Path file = sourceDir.resolve("test.jpg");
-        Files.write(file, new byte[20 * 1024]);
+        Files.write(file, realJpeg(42));
 
         MediaFile mf = new MediaFile();
         mf.setAbsolutePath(file.toString());

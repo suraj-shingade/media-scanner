@@ -28,6 +28,8 @@ public class JobStatistics {
     private double peakCpuPercent;
     private double avgMemoryGb;
     private double peakMemoryGb;
+    private double peakDiskReadMbSec;
+    private double peakDiskWriteMbSec;
     private String status;
     private LocalDateTime startTime;
     private LocalDateTime endTime;
@@ -88,6 +90,49 @@ public class JobStatistics {
     public void setAvgMemoryGb(double avgMemoryGb) { this.avgMemoryGb = avgMemoryGb; }
     public double getPeakMemoryGb() { return peakMemoryGb; }
     public void setPeakMemoryGb(double peakMemoryGb) { this.peakMemoryGb = peakMemoryGb; }
+    public double getPeakDiskReadMbSec() { return peakDiskReadMbSec; }
+    public void setPeakDiskReadMbSec(double v) { this.peakDiskReadMbSec = v; }
+    public double getPeakDiskWriteMbSec() { return peakDiskWriteMbSec; }
+    public void setPeakDiskWriteMbSec(double v) { this.peakDiskWriteMbSec = v; }
+
+    /**
+     * A field-by-field copy. Callers take this under the object's own lock so every counter comes
+     * from one instant — reading the live object piecemeal mixes counters mutated microseconds
+     * apart by different workers.
+     */
+    public JobStatistics copy() {
+        JobStatistics c = new JobStatistics();
+        c.jobId = jobId;
+        c.filesProcessed = filesProcessed;
+        c.filesFailed = filesFailed;
+        c.filesSkipped = filesSkipped;
+        c.duplicatesFound = duplicatesFound;
+        c.filesCopied = filesCopied;
+        c.filesMoved = filesMoved;
+        c.emptyFilesCount = emptyFilesCount;
+        c.smallFilesCount = smallFilesCount;
+        c.corruptFilesCount = corruptFilesCount;
+        c.totalBytesProcessed = totalBytesProcessed;
+        c.totalBytesMoved = totalBytesMoved;
+        c.totalBytesCopied = totalBytesCopied;
+        c.totalBytesSkipped = totalBytesSkipped;
+        c.duplicateByteSavings = duplicateByteSavings;
+        c.totalFoldersCreated = totalFoldersCreated;
+        c.avgMbPerSec = avgMbPerSec;
+        c.peakMbPerSec = peakMbPerSec;
+        c.avgFilesPerSec = avgFilesPerSec;
+        c.peakFilesPerSec = peakFilesPerSec;
+        c.avgCpuPercent = avgCpuPercent;
+        c.peakCpuPercent = peakCpuPercent;
+        c.avgMemoryGb = avgMemoryGb;
+        c.peakMemoryGb = peakMemoryGb;
+        c.peakDiskReadMbSec = peakDiskReadMbSec;
+        c.peakDiskWriteMbSec = peakDiskWriteMbSec;
+        c.status = status;
+        c.startTime = startTime;
+        c.endTime = endTime;
+        return c;
+    }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public LocalDateTime getStartTime() { return startTime; }

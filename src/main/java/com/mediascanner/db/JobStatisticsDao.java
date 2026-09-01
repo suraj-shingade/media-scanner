@@ -49,7 +49,8 @@ public class JobStatisticsDao {
               TOTAL_BYTES_SKIPPED = ?, DUPLICATE_BYTE_SAVINGS = ?, TOTAL_FOLDERS_CREATED = ?,
               AVG_MB_PER_SEC = ?, PEAK_MB_PER_SEC = ?, AVG_FILES_PER_SEC = ?,
               PEAK_FILES_PER_SEC = ?, AVG_CPU_PERCENT = ?, PEAK_CPU_PERCENT = ?,
-              AVG_MEMORY_GB = ?, PEAK_MEMORY_GB = ?
+              AVG_MEMORY_GB = ?, PEAK_MEMORY_GB = ?,
+              PEAK_DISK_READ_MB_SEC = ?, PEAK_DISK_WRITE_MB_SEC = ?
             WHERE JOB_ID = ?
             """;
         try (PreparedStatement ps = database.getConnection().prepareStatement(sql)) {
@@ -77,7 +78,9 @@ public class JobStatisticsDao {
             ps.setDouble(22, stats.getPeakCpuPercent());
             ps.setDouble(23, stats.getAvgMemoryGb());
             ps.setDouble(24, stats.getPeakMemoryGb());
-            ps.setString(25, stats.getJobId());
+            ps.setDouble(25, stats.getPeakDiskReadMbSec());
+            ps.setDouble(26, stats.getPeakDiskWriteMbSec());
+            ps.setString(27, stats.getJobId());
             ps.executeUpdate();
         }
     }
@@ -202,6 +205,8 @@ public class JobStatisticsDao {
         s.setPeakCpuPercent(rs.getDouble("PEAK_CPU_PERCENT"));
         s.setAvgMemoryGb(rs.getDouble("AVG_MEMORY_GB"));
         s.setPeakMemoryGb(rs.getDouble("PEAK_MEMORY_GB"));
+        s.setPeakDiskReadMbSec(rs.getDouble("PEAK_DISK_READ_MB_SEC"));
+        s.setPeakDiskWriteMbSec(rs.getDouble("PEAK_DISK_WRITE_MB_SEC"));
         return s;
     }
 }
