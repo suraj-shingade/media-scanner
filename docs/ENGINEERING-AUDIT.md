@@ -261,9 +261,13 @@ to be broken at release time.
 uploads Surefire and Failsafe reports as artifacts. Paired with the H8 Failsafe fix, this is the first
 time the integration tests will run anywhere.
 
-**Caveat**: the workflow file itself has still never executed — it needs a push to GitHub to prove out.
-The `mvn verify` command it runs is verified locally on Windows; the Linux and macOS legs, and the xvfb
-setup for the UI tests, are not.
+**Verified**: green on ubuntu-latest, macos-latest and windows-latest (run 33519273821).
+
+The first run failed on all three runners, and the cause is worth recording: `mvnw` was committed as
+mode `100644`. This repo has `core.filemode=false` (it lives on Windows), so the executable bit was
+never recorded and `./mvnw` died with `Permission denied` on every platform. Fixed with
+`git update-index --chmod=+x mvnw`. A local build cannot catch this — only CI can, which is a neat
+argument for having added it.
 
 ### P3. `pom.xml` version is hardcoded to `1.0.0`
 Intentional per the 004 plan (CI overrides it with `versions:set`), but it means a locally built

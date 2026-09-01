@@ -95,12 +95,12 @@ resume (FR-017/FR-022 at the job level) remains the main unbuilt requirement.
 | B001 | FR-001–022 missing from provided docx | Suraj | ✅ RESOLVED — captured from MediaScanner BRD.docx | 2026-06-03 |
 | B002 | `/brd` folder was empty | Suraj | ✅ RESOLVED — BRD.docx + FRD.docx present | 2026-06-03 |
 | B003 | Maven not installed; full test suite had never been run | Suraj | 🟢 RESOLVED — Maven 3.9.9 installed, `mvnw`/`mvnw.cmd`/`.mvn/wrapper` committed, and `./mvnw clean verify` passes (187 tests) | — |
-| B004 | No CI on push/PR — `release.yml` only fired on `v*.*.*` tags | Suraj | 🟡 FIXED, UNVERIFIED — `.github/workflows/build.yml` added (3 platforms, `./mvnw verify`, xvfb on Linux). Still never executed | Push a branch and confirm the workflow goes green |
+| B004 | No CI on push/PR — `release.yml` only fired on `v*.*.*` tags | Suraj | 🟢 RESOLVED — `.github/workflows/build.yml` runs on every branch push and PR. **Verified green on ubuntu, macOS and Windows** (run 33519273821). First run failed because `mvnw` was committed 100644; fixed with `git update-index --chmod=+x` | — |
 | B005 | Resume is cosmetic — a "resumed" job re-copies everything already transferred as `IMG001(1).jpg` duplicates | Suraj | 🔴 OPEN | Audit H5. Cut feature **007** for this (006 is taken by the Cleanup Tool) |
 | B006 | The 4 `*IT` classes had never run — Surefire without Failsafe, and Surefire defaults do not match `*IT.java` | Suraj | 🟢 RESOLVED — `maven-failsafe-plugin` added; all four passed on first execution | — |
 | B007 | Nobody had driven the GUI | Suraj | 🟡 MOSTLY RESOLVED — app launched against a sandboxed home and driven through Job History → row selection → Open Summary → throughput charts. Two UI defects found and fixed. **Still not done**: a run against a real 50 000+ file archive, and the export file dialogs | Run the remaining half of `specs/005-job-reports-history/quickstart.md` |
 
-**B005 is the meaningful open item.** B004 needs one push to close.
+**B005 is the only meaningful open item left.** B007 needs a real large-archive run to fully close.
 
 ---
 
@@ -268,6 +268,44 @@ test covers — atomic-move fast path and unreadable-directory tolerance with a 
 
 ---
 
+### 2026-09-01 — Session 7 (Committed, pushed, CI verified green)
+
+**Work done**:
+- Committed feature 005 + the audit fixes to branch `005-job-reports-history` (63 files) and pushed.
+- **CI is green on all three platforms** (run 33519273821) — the `Build` workflow's first successful
+  execution, closing **B004** for real rather than on configuration alone.
+
+**The first CI run failed on all three runners.** `mvnw` was committed as mode 100644: this repo has
+`core.filemode=false` (Windows), so the executable bit was never recorded and `./mvnw` died with
+Permission denied everywhere. Fixed with `git update-index --chmod=+x mvnw`. Worth remembering for any
+future script committed from this machine — the local build cannot catch this, only CI can.
+
+**Deliberately NOT committed**: another session (`media-scanner-68`) is concurrently speccing feature
+006 (Cleanup Tool) in this same working tree. Its three paths — `.specify/feature.json`,
+`.specify/memory/constitution.md` (amended to v1.2.0, adding Principle IX Destructive Operations Safety
+and Gate G7), and `specs/006-cleanup-tool/` — were excluded from the commit and left untouched. HEAD was
+handed back to the `006-cleanup-tool` branch afterwards so that session resumes where it left off.
+
+Because 006 is taken, the resume feature (**B005**) is renumbered **007** throughout.
+
+**Note on Principle IX**: feature 005 already complies. Deleting a job from history removes only database
+rows and explicitly never touches archive files, and the confirmation dialog says so.
+
+**Verification limits**: the CI logs and artifacts need repo-admin auth to download, so the exact
+per-OS test counts were not read. What is known: `./mvnw verify` exited 0 on each OS (Maven fails the
+build on any test failure) and each run produced 128–155 KB of Surefire/Failsafe XML, so tests ran and
+passed. `FxmlLoadIT` skips itself when no JavaFX toolkit is available, so it may have been skipped rather
+than run on some runner.
+
+**Next action**:
+1. Open a PR for `005-job-reports-history` (gh CLI is not authenticated on this machine)
+2. Run the remaining half of `specs/005-job-reports-history/quickstart.md` against a real 50 000+ file
+   archive (**B007**, task T047)
+3. Cut feature **007** for true resume (**B005**) — the largest remaining correctness gap
+4. Then the open audit findings: M3 (corrupt-media detection), M4/M5 (resource monitoring), M9 (stats race)
+
+---
+
 ### 2026-09-01 — Session 6 (Maven wrapper, GUI acceptance pass)
 
 **Work done**:
@@ -299,11 +337,7 @@ present and correct. Chasing it down avoided "fixing" a layout that was never br
 were not exercised (`SummaryExporter` is covered by 10 unit tests instead). `build.yml` has still never
 executed.
 
-**Next action**:
-1. `git checkout -b 005-job-reports-history`, commit, push — confirm **B004** goes green on all runners
-2. Run the remaining half of `specs/005-job-reports-history/quickstart.md` against a real large archive
-3. Cut feature **007** for true resume (**B005**) — 006 is taken by the Cleanup Tool
-4. Then the open audit findings: M3 (corrupt-media detection), M4/M5 (resource monitoring), M9 (stats race)
+**Next action**: see Session 7 below.
 
 ---
 
