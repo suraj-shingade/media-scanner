@@ -25,6 +25,13 @@ public class FileScanner {
     private final List<IgnoreRule> ignoreRules;
     private final List<PathMatcher> matchers;
 
+    /**
+     * Notified for files excluded during the walk. Ignore-rule matches and unsupported formats are
+     * filtered here and never reach a worker, so without this hook they cannot appear in the
+     * skipped report (FR-020). Null by default - the counting pass must not double-record.
+     */
+    private java.util.function.BiConsumer<Path, MediaFile.SkipReason> skipListener;
+
     public FileScanner(List<IgnoreRule> ignoreRules) {
         this.ignoreRules = ignoreRules != null ? ignoreRules : Collections.emptyList();
         this.matchers = buildMatchers(this.ignoreRules);
@@ -43,14 +50,57 @@ public class FileScanner {
         return list;
     }
 
+    public void setSkipListener(java.util.function.BiConsumer<Path, MediaFile.SkipReason> listener) {
+        this.skipListener = listener;
+    }
+
     public Stream<Path> walkFileTree(Path sourceDir) throws IOException {
         if (!Files.exists(sourceDir)) {
             return Stream.empty();
         }
-        return Files.walk(sourceDir)
+        return walkSafely(sourceDir)
             .filter(Files::isRegularFile)
-            .filter(p -> !isIgnored(p))
-            .filter(p -> classifyMediaType(p) != null);
+            .filter(this::acceptOrReport);
+    }
+
+    /** Applies the ignore and media-type filters, reporting anything excluded to the listener. */
+    private boolean acceptOrReport(Path path) {
+        if (isIgnored(path)) {
+            notifySkip(path, MediaFile.SkipReason.IGNORE_RULE_MATCHED);
+            return false;
+        }
+        if (classifyMediaType(path) == null) {
+            notifySkip(path, MediaFile.SkipReason.UNSUPPORTED_FORMAT);
+            return false;
+        }
+        return true;
+    }
+
+    private void notifySkip(Path path, MediaFile.SkipReason reason) {
+        if (skipListener == null) return;
+        try {
+            skipListener.accept(path, reason);
+        } catch (Exception e) {
+            log.debug("Skip listener failed for {}: {}", path, e.getMessage());
+        }
+    }
+
+    /**
+     * Lazily walks the tree, logging and skipping directories that cannot be read.
+     * {@code Files.walk} instead throws {@link java.io.UncheckedIOException} mid-stream on the
+     * first permission-denied directory, which would abort an entire multi-hour scan.
+     */
+    private Stream<Path> walkSafely(Path dir) {
+        Stream<Path> children;
+        try {
+            children = Files.list(dir);
+        } catch (IOException e) {
+            log.warn("Skipping unreadable directory {}: {}", dir, e.getMessage());
+            return Stream.empty();
+        }
+        return children
+            .flatMap(p -> Files.isDirectory(p) ? walkSafely(p) : Stream.of(p))
+            .onClose(children::close);
     }
 
     public MediaFile.FileType classifyMediaType(Path path) {

@@ -1,6 +1,7 @@
 package com.mediascanner.app;
 
 import com.mediascanner.config.AppConfig;
+import com.mediascanner.db.Database;
 import com.mediascanner.engine.AppStateManager;
 import com.mediascanner.ui.DarkModeManager;
 import com.mediascanner.ui.MenuBarController;
@@ -29,6 +30,11 @@ public class MediaScannerApp extends Application {
     private static DarkModeManager darkModeManager;
     private static MenuBarController menuBarController;
     private static Stage primaryStage;
+    /**
+     * Opened asynchronously by MainController on startup. Screens that need it (Job History,
+     * a stored job summary) read it from here rather than each opening their own connection.
+     */
+    private static volatile Database database;
 
     @Override
     public void start(Stage stage) {
@@ -81,6 +87,9 @@ public class MediaScannerApp extends Application {
             Platform.exit();
         }
     }
+
+    public static Database getDatabase() { return database; }
+    public static void setDatabase(Database db) { database = db; }
 
     public static AppConfig getAppConfig() { return appConfig; }
     public static AppStateManager getAppStateManager() { return appStateManager; }

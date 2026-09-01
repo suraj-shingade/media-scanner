@@ -75,6 +75,13 @@
         </ScrollPane>
     </center>
 
+    <right>
+        <VBox fx:id="chartContainer" spacing="6" minWidth="420" prefWidth="460" minHeight="340">
+            <padding><Insets top="12" right="12" bottom="12" left="6"/></padding>
+            <Label text="Live Throughput" styleClass="panel-title"/>
+        </VBox>
+    </right>
+
     <bottom>
         <Label fx:id="statusLabel" text="Running..."
                style="-fx-padding: 6 16 6 16; -fx-background-color: #f0f0f0;"/>

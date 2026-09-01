@@ -1,29 +1,30 @@
 package com.mediascanner.ui;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.mediascanner.app.MediaScannerApp;
 import com.mediascanner.config.AppConfig;
 import com.mediascanner.db.Database;
 import com.mediascanner.db.JobStatisticsDao;
+import com.mediascanner.db.ThroughputSampleDao;
+import com.mediascanner.model.ThroughputSample;
+import com.mediascanner.report.SummaryExporter;
 import com.mediascanner.model.JobStatistics;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.scene.control.*;
+import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.awt.Desktop;
 import java.io.File;
-import java.io.FileWriter;
-import java.io.PrintWriter;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.util.Collections;
+import java.util.List;
 import java.util.ResourceBundle;
 
 public class SummaryController implements Initializable {
@@ -51,14 +52,23 @@ public class SummaryController implements Initializable {
     @FXML private Label startTimeLabel;
     @FXML private Label endTimeLabel;
     @FXML private Label durationLabel;
+    @FXML private VBox chartContainer;
 
     private JobStatistics stats;
     private Database database;
     private AppConfig config;
     private String targetPath;
+    private final SummaryExporter exporter = new SummaryExporter();
+    private ThroughputChart chart;
+    private List<ThroughputSample> samples = Collections.emptyList();
 
     @Override
-    public void initialize(URL location, ResourceBundle resources) {}
+    public void initialize(URL location, ResourceBundle resources) {
+        chart = new ThroughputChart();
+        if (chartContainer != null) {
+            chartContainer.getChildren().add(chart);
+        }
+    }
 
     public void init(JobStatistics stats, Database database, AppConfig config, String targetPath) {
         this.stats = stats;
@@ -66,7 +76,44 @@ public class SummaryController implements Initializable {
         this.config = config;
         this.targetPath = targetPath;
 
-        if (stats != null) populateUI();
+        if (stats != null) {
+            populateUI();
+            loadThroughput();
+        }
+    }
+
+    /**
+     * Populates this screen for a job that finished earlier, entirely from stored data
+     * (FR-005-009). The live path above needs a running engine; this one only needs a job id.
+     */
+    public void loadStoredJob(String jobId, Database database, AppConfig config) {
+        this.database = database;
+        this.config = config;
+        try {
+            JobStatistics stored = new JobStatisticsDao(database).findByJobId(jobId);
+            if (stored == null) {
+                showAlert("Job Not Found", "No stored record for job " + jobId + ".");
+                return;
+            }
+            this.stats = stored;
+            this.targetPath = null;
+            populateUI();
+            loadThroughput();
+        } catch (Exception e) {
+            log.error("Could not load stored job {}: {}", jobId, e.getMessage());
+            showAlert("Error", "Could not load job " + jobId + ": " + e.getMessage());
+        }
+    }
+
+    private void loadThroughput() {
+        if (database == null || stats == null) return;
+        try {
+            samples = new ThroughputSampleDao(database).findDownsampled(stats.getJobId(), 600);
+        } catch (Exception e) {
+            log.warn("Could not load throughput samples: {}", e.getMessage());
+            samples = Collections.emptyList();
+        }
+        if (chart != null) chart.setSamples(samples);
     }
 
     private void populateUI() {
@@ -117,68 +164,37 @@ public class SummaryController implements Initializable {
     }
 
     @FXML private void onExportJson() {
-        if (stats == null) return;
-        FileChooser chooser = new FileChooser();
-        chooser.setTitle("Export Summary (JSON)");
-        chooser.getExtensionFilters().add(
-            new FileChooser.ExtensionFilter("JSON Files", "*.json"));
-        chooser.setInitialFileName(stats.getJobId() + "-summary.json");
-        File file = chooser.showSaveDialog(totalFoundLabel.getScene().getWindow());
-        if (file != null) {
-            try {
-                ObjectMapper mapper = new ObjectMapper();
-                mapper.registerModule(new JavaTimeModule());
-                mapper.enable(SerializationFeature.INDENT_OUTPUT);
-                mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-                mapper.writeValue(file, stats);
-                log.info("Summary exported to {}", file.getAbsolutePath());
-            } catch (Exception e) {
-                showAlert("Export Error", e.getMessage());
-            }
-        }
+        exportAs(SummaryExporter.Format.JSON, "JSON Files", "*.json", ".json");
     }
 
-    @FXML private void onExportText() {
+    @FXML private void onExportCsv() {
+        exportAs(SummaryExporter.Format.CSV, "CSV Files", "*.csv", ".csv");
+    }
+
+    @FXML private void onExportHtml() {
+        exportAs(SummaryExporter.Format.HTML, "HTML Files", "*.html", ".html");
+    }
+
+    /**
+     * All three formats go through one exporter so their figures cannot drift apart
+     * (FR-005-010).
+     */
+    private void exportAs(SummaryExporter.Format format, String filterLabel,
+                          String glob, String extension) {
         if (stats == null) return;
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("Export Summary (Text)");
-        chooser.getExtensionFilters().add(
-            new FileChooser.ExtensionFilter("Text Files", "*.txt"));
-        chooser.setInitialFileName(stats.getJobId() + "-summary.txt");
+        chooser.setTitle("Export Summary (" + format + ")");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter(filterLabel, glob));
+        chooser.setInitialFileName(stats.getJobId() + "-summary" + extension);
         File file = chooser.showSaveDialog(totalFoundLabel.getScene().getWindow());
-        if (file != null) {
-            try (PrintWriter pw = new PrintWriter(new FileWriter(file))) {
-                pw.println("MediaScanner Job Summary");
-                pw.println("========================");
-                pw.println("Job ID:           " + stats.getJobId());
-                pw.println("Start Time:       " + stats.getStartTime());
-                pw.println("End Time:         " + stats.getEndTime());
-                pw.println();
-                pw.println("Files");
-                pw.println("  Processed:      " + stats.getFilesProcessed());
-                pw.println("  Failed:         " + stats.getFilesFailed());
-                pw.println("  Skipped:        " + stats.getFilesSkipped());
-                pw.println("  Duplicates:     " + stats.getDuplicatesFound());
-                pw.println("  Empty:          " + stats.getEmptyFilesCount());
-                pw.println("  Small:          " + stats.getSmallFilesCount());
-                pw.println("  Corrupt:        " + stats.getCorruptFilesCount());
-                pw.println("  Folders:        " + stats.getTotalFoldersCreated());
-                pw.println();
-                pw.println("Data");
-                pw.println("  Total:          " + DataUnitFormatter.format(stats.getTotalBytesProcessed()));
-                pw.println("  Copied:         " + DataUnitFormatter.format(stats.getTotalBytesCopied()));
-                pw.println("  Moved:          " + DataUnitFormatter.format(stats.getTotalBytesMoved()));
-                pw.println("  Dup Savings:    " + DataUnitFormatter.format(stats.getDuplicateByteSavings()));
-                pw.println();
-                pw.println("Performance");
-                pw.println("  Avg files/sec:  " + String.format("%.1f", stats.getAvgFilesPerSec()));
-                pw.println("  Peak files/sec: " + String.format("%.1f", stats.getPeakFilesPerSec()));
-                pw.println("  Avg MB/sec:     " + DataUnitFormatter.formatRate(stats.getAvgMbPerSec()));
-                pw.println("  Peak MB/sec:    " + DataUnitFormatter.formatRate(stats.getPeakMbPerSec()));
-                log.info("Text summary exported to {}", file.getAbsolutePath());
-            } catch (Exception e) {
-                showAlert("Export Error", e.getMessage());
-            }
+        if (file == null) return;
+        try {
+            exporter.export(file.toPath(), format, stats, samples);
+            log.info("Summary exported to {}", file.getAbsolutePath());
+        } catch (Exception e) {
+            // US4 AS-4: an unwritable target must not take the application down with it.
+            log.error("Export failed: {}", e.getMessage());
+            showAlert("Export Error", "Could not write " + file.getName() + ": " + e.getMessage());
         }
     }
 

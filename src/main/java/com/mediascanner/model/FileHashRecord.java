@@ -11,6 +11,8 @@ public class FileHashRecord {
     private long fileSizeBytes;
     private Instant fileModificationTs;
     private String sha256Hash;
+    /** Digest of the leading block. Populated for future FR-025 Stage 2 short-circuiting. */
+    private String partialHash;
     private LocalDateTime mediaDate;
     private Instant createdAt;
     private Instant lastProcessedAt;
@@ -27,6 +29,8 @@ public class FileHashRecord {
     public void setFileSizeBytes(long fileSizeBytes) { this.fileSizeBytes = fileSizeBytes; }
     public Instant getFileModificationTs() { return fileModificationTs; }
     public void setFileModificationTs(Instant fileModificationTs) { this.fileModificationTs = fileModificationTs; }
+    public String getPartialHash() { return partialHash; }
+    public void setPartialHash(String partialHash) { this.partialHash = partialHash; }
     public String getSha256Hash() { return sha256Hash; }
     public void setSha256Hash(String sha256Hash) { this.sha256Hash = sha256Hash; }
     public LocalDateTime getMediaDate() { return mediaDate; }

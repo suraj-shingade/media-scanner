@@ -57,6 +57,7 @@ public class DashboardController implements Initializable {
     @FXML private Button pauseButton;
     @FXML private Button resumeButton;
     @FXML private Label statusLabel;
+    @FXML private javafx.scene.layout.VBox chartContainer;
 
     private ScanEngine scanEngine;
     private ProgressTracker progressTracker;
@@ -65,6 +66,10 @@ public class DashboardController implements Initializable {
     private Database database;
     private AppConfig config;
     private Timeline refreshTimeline;
+    private ThroughputChart chart;
+    /** Live chart window: 10 minutes at 1 Hz. Older points scroll off. */
+    private static final int LIVE_CHART_POINTS = 600;
+    private long chartElapsedSeconds = 0;
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {}
@@ -89,6 +94,10 @@ public class DashboardController implements Initializable {
         }
 
         resourceMonitor.start();
+        if (chartContainer != null) {
+            chart = new ThroughputChart();
+            chartContainer.getChildren().add(chart);
+        }
         startRefreshTimeline();
         startScanAsync();
     }
@@ -134,6 +143,11 @@ public class DashboardController implements Initializable {
         cpuLabel.setText(String.format("%.1f%%", resourceMonitor.getCpuPercent()));
         memoryLabel.setText(String.format("%.2f GB", resourceMonitor.getMemoryGb()));
         threadsLabel.setText(String.valueOf(resourceMonitor.getActiveThreads()));
+
+        if (chart != null) {
+            chart.appendSample(++chartElapsedSeconds, snap.avgFilesPerSec5s,
+                snap.avgMbPerSec5s, LIVE_CHART_POINTS);
+        }
 
         progressTracker.tick();
     }

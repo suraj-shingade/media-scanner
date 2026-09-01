@@ -42,9 +42,11 @@
         <Label text="⌘2 / Ctrl+2"         GridPane.columnIndex="1" GridPane.rowIndex="11"/>
         <Label text="Summary screen"       GridPane.columnIndex="0" GridPane.rowIndex="12"/>
         <Label text="⌘3 / Ctrl+3"         GridPane.columnIndex="1" GridPane.rowIndex="12"/>
-        <Label text="Toggle Dark Mode"     GridPane.columnIndex="0" GridPane.rowIndex="13"/>
-        <Label text="⌘D / Ctrl+D"         GridPane.columnIndex="1" GridPane.rowIndex="13"/>
-        <Label text="User Guide"           GridPane.columnIndex="0" GridPane.rowIndex="14"/>
-        <Label text="F1"                   GridPane.columnIndex="1" GridPane.rowIndex="14"/>
+        <Label text="Job History screen"   GridPane.columnIndex="0" GridPane.rowIndex="13"/>
+        <Label text="⌘4 / Ctrl+4"         GridPane.columnIndex="1" GridPane.rowIndex="13"/>
+        <Label text="Toggle Dark Mode"     GridPane.columnIndex="0" GridPane.rowIndex="14"/>
+        <Label text="⌘D / Ctrl+D"         GridPane.columnIndex="1" GridPane.rowIndex="14"/>
+        <Label text="User Guide"           GridPane.columnIndex="0" GridPane.rowIndex="15"/>
+        <Label text="F1"                   GridPane.columnIndex="1" GridPane.rowIndex="15"/>
     </GridPane>
 </VBox>

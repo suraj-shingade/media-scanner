@@ -46,7 +46,8 @@ public class ResourceMonitor {
     private void sample() {
         try {
             if (osMxBean != null) {
-                double cpu = osMxBean.getSystemCpuLoad();
+                // getSystemCpuLoad() is deprecated since Java 14 in favour of getCpuLoad().
+                double cpu = osMxBean.getCpuLoad();
                 if (cpu >= 0) cpuPercent = cpu * 100.0;
             }
 

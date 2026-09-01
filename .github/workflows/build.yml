@@ -1,0 +1,120 @@
+name: Build
+
+# Until this workflow existed, release.yml was the only workflow and it fires only on v*.*.* tags —
+# so nothing compiled the project or ran its tests on a branch. A broken change could only be
+# discovered at release time.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # JavaFX and the UI tests need a display. The other two runners have one; Linux does not.
+      - name: Start virtual display (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          echo "DISPLAY=:99" >> "$GITHUB_ENV"
+          Xvfb :99 -screen 0 1280x1024x24 &
+
+      # `verify` runs Surefire (unit tests) and Failsafe (the *IT integration tests).
+      # Uses the committed wrapper so the Maven version is pinned rather than whatever the runner ships.
+      - name: Build and test
+        shell: bash
+        run: ./mvnw --batch-mode --no-transfer-progress verify
+
+      # Prints the totals into the job log and the run summary, so test counts are readable
+      # without downloading artifacts (which needs repo-admin auth). Also fails the build if no
+      # tests ran at all — the exact failure mode that let the four *IT classes sit unexecuted
+      # through four features, reporting green the whole time.
+      - name: Summarise test results
+        if: always()
+        shell: bash
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" - <<'PYEOF'
+          import glob, os, sys
+          import xml.etree.ElementTree as ET
+
+          totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
+          skipped_classes = []
+          files = glob.glob("target/surefire-reports/TEST-*.xml") + \
+                  glob.glob("target/failsafe-reports/TEST-*.xml")
+
+          for f in files:
+              try:
+                  suite = ET.parse(f).getroot()
+              except ET.ParseError:
+                  continue
+              for k in totals:
+                  totals[k] += int(suite.get(k, 0) or 0)
+              if int(suite.get("skipped", 0) or 0) > 0:
+                  skipped_classes.append(
+                      "%s (%s skipped)" % (suite.get("name"), suite.get("skipped")))
+
+          ran = totals["tests"] - totals["skipped"]
+          lines = [
+              "## Test results (%s)" % os.environ.get("MATRIX_OS", "this runner"),
+              "",
+              "| metric | count |",
+              "|---|---|",
+              "| report files | %d |" % len(files),
+              "| tests declared | %d |" % totals["tests"],
+              "| **actually ran** | **%d** |" % ran,
+              "| failures | %d |" % totals["failures"],
+              "| errors | %d |" % totals["errors"],
+              "| skipped | %d |" % totals["skipped"],
+          ]
+          if skipped_classes:
+              lines += ["", "Skipped classes:", ""] + ["- " + c for c in sorted(skipped_classes)]
+
+          out = "\n".join(lines)
+          print(out)
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a", encoding="utf-8") as fh:
+                  fh.write(out + "\n")
+
+          if not files:
+              sys.exit("No test report files found — the test phase did not run.")
+          if ran == 0:
+              sys.exit("Test reports exist but zero tests actually ran.")
+          PYEOF
+        env:
+          MATRIX_OS: ${{ matrix.os }}
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ matrix.os }}
+          path: |
+            target/surefire-reports/
+            target/failsafe-reports/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -17,6 +17,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 
@@ -64,6 +66,7 @@ public class MainController implements Initializable {
         new Thread(() -> {
             try {
                 database = new Database(config.getDbPath());
+                MediaScannerApp.setDatabase(database);
                 if (database.isCorruptionWarning()) {
                     Platform.runLater(() -> showAlert("Database Warning",
                         "Hash cache lost — all files will be re-hashed this run."));
@@ -85,14 +88,65 @@ public class MainController implements Initializable {
         }, "db-init").start();
     }
 
+    /**
+     * Offers to resume a job that a crash left running (FR-022).
+     *
+     * <p>Resuming re-runs the same source and target. The engine skips every file it already
+     * transferred by looking up where it wrote it, so this completes the remainder rather than
+     * copying the archive a second time.
+     */
     private void offerResume(JobStatistics active) {
+        CheckpointState state = readCheckpoint(active.getJobId());
+        if (state == null || state.getSourcePath() == null || state.getTargetPath() == null) {
+            markInterrupted(active.getJobId());
+            statusLabel.setText("A previous job was interrupted, but its checkpoint is unreadable.");
+            return;
+        }
+
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
         alert.setTitle("Resume Previous Job?");
-        alert.setHeaderText("An interrupted job was found: " + active.getJobId());
-        alert.setContentText("Processed: " + active.getFilesProcessed() + " files. Resume?");
+        alert.setHeaderText("A previous job did not finish: " + active.getJobId());
+        alert.setContentText(
+            "Source: " + state.getSourcePath() + "\n"
+            + "Target: " + state.getTargetPath() + "\n\n"
+            + "It had processed " + state.getProcessedFiles() + " files.\n\n"
+            + "Resuming re-scans the source and transfers only what is missing from the archive. "
+            + "Files already transferred are left alone.");
+        ButtonType resume = new ButtonType("Resume");
+        ButtonType notNow = new ButtonType("Not Now", ButtonBar.ButtonData.CANCEL_CLOSE);
+        alert.getButtonTypes().setAll(resume, notNow);
+
         Optional<ButtonType> result = alert.showAndWait();
-        if (result.isPresent() && result.get() == ButtonType.OK) {
-            statusLabel.setText("Import the job state file to resume.");
+        markInterrupted(active.getJobId());
+
+        sourcePathField.setText(state.getSourcePath());
+        targetPathField.setText(state.getTargetPath());
+        checkStartButtonState();
+
+        if (result.isPresent() && result.get() == resume) {
+            statusLabel.setText("Resuming " + active.getJobId() + "…");
+            onStartScan();
+        } else {
+            statusLabel.setText("Paths restored from the interrupted job. Press Start to resume.");
+        }
+    }
+
+    private CheckpointState readCheckpoint(String jobId) {
+        Path file = config.getJobsDir().resolve(jobId).resolve("checkpoint.json");
+        if (!Files.exists(file)) return null;
+        try {
+            return exporter.importFrom(file);
+        } catch (Exception e) {
+            log.warn("Could not read checkpoint for {}: {}", jobId, e.getMessage());
+            return null;
+        }
+    }
+
+    private void markInterrupted(String jobId) {
+        try {
+            new JobStatisticsDao(database).markInterrupted(jobId);
+        } catch (Exception e) {
+            log.warn("Could not mark {} interrupted: {}", jobId, e.getMessage());
         }
     }
 
