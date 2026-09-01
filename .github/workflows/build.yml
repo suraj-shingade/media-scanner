@@ -48,6 +48,66 @@ jobs:
         shell: bash
         run: ./mvnw --batch-mode --no-transfer-progress verify
 
+      # Prints the totals into the job log and the run summary, so test counts are readable
+      # without downloading artifacts (which needs repo-admin auth). Also fails the build if no
+      # tests ran at all — the exact failure mode that let the four *IT classes sit unexecuted
+      # through four features, reporting green the whole time.
+      - name: Summarise test results
+        if: always()
+        shell: bash
+        run: |
+          PY=$(command -v python3 || command -v python)
+          "$PY" - <<'PYEOF'
+          import glob, os, sys
+          import xml.etree.ElementTree as ET
+
+          totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
+          skipped_classes = []
+          files = glob.glob("target/surefire-reports/TEST-*.xml") + \
+                  glob.glob("target/failsafe-reports/TEST-*.xml")
+
+          for f in files:
+              try:
+                  suite = ET.parse(f).getroot()
+              except ET.ParseError:
+                  continue
+              for k in totals:
+                  totals[k] += int(suite.get(k, 0) or 0)
+              if int(suite.get("skipped", 0) or 0) > 0:
+                  skipped_classes.append(
+                      "%s (%s skipped)" % (suite.get("name"), suite.get("skipped")))
+
+          ran = totals["tests"] - totals["skipped"]
+          lines = [
+              "## Test results (%s)" % os.environ.get("MATRIX_OS", "this runner"),
+              "",
+              "| metric | count |",
+              "|---|---|",
+              "| report files | %d |" % len(files),
+              "| tests declared | %d |" % totals["tests"],
+              "| **actually ran** | **%d** |" % ran,
+              "| failures | %d |" % totals["failures"],
+              "| errors | %d |" % totals["errors"],
+              "| skipped | %d |" % totals["skipped"],
+          ]
+          if skipped_classes:
+              lines += ["", "Skipped classes:", ""] + ["- " + c for c in sorted(skipped_classes)]
+
+          out = "\n".join(lines)
+          print(out)
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a", encoding="utf-8") as fh:
+                  fh.write(out + "\n")
+
+          if not files:
+              sys.exit("No test report files found — the test phase did not run.")
+          if ran == 0:
+              sys.exit("Test reports exist but zero tests actually ran.")
+          PYEOF
+        env:
+          MATRIX_OS: ${{ matrix.os }}
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
