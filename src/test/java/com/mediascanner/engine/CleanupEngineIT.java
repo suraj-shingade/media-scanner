@@ -3,12 +3,14 @@ package com.mediascanner.engine;
 import com.mediascanner.model.CleanupCandidate;
 import com.mediascanner.model.CleanupRun;
 import com.mediascanner.model.MimeGroup;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -31,6 +33,38 @@ class CleanupEngineIT {
 
     private final CleanupEngine engine = new CleanupEngine();
 
+    /**
+     * The tree these tests operate on.
+     *
+     * <p>Deliberately <em>not</em> a JUnit {@code @TempDir}. On macOS that resolves under
+     * {@code /var/folders}, and {@link DangerousRoots} refuses anything under {@code /var} — so
+     * every test here failed on macOS while passing on Linux and Windows. The guard was right; the
+     * tests were pointing a deletion tool somewhere the product is designed to refuse.
+     *
+     * <p>Running under {@code target/} instead exercises a path shaped like a real user folder, and
+     * behaves the same on all three platforms.
+     */
+    private Path root;
+
+    @BeforeEach
+    void createWorkingTree() throws IOException {
+        Path base = Paths.get("target", "cleanup-it").toAbsolutePath();
+        Files.createDirectories(base);
+        root = Files.createTempDirectory(base, "tree-");
+    }
+
+    @AfterEach
+    void removeWorkingTree() {
+        if (root == null) return;
+        try (java.util.stream.Stream<Path> walk = Files.walk(root)) {
+            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                try { Files.deleteIfExists(p); } catch (IOException ignored) { }
+            });
+        } catch (IOException ignored) {
+            // A leftover directory under target/ is harmless; mvn clean removes it.
+        }
+    }
+
     /** Builds the standard mixed tree used by most cases below. */
     private Tree standardTree(Path root) throws IOException {
         Tree t = new Tree();
@@ -51,7 +85,7 @@ class CleanupEngineIT {
     // --------------------------------------------------------- US1: analysis
 
     @Test
-    void analysisMutatesNothing(@TempDir Path root) throws Exception {
+    void analysisMutatesNothing() throws Exception {
         standardTree(root);
         String before = hashTree(root);
 
@@ -64,7 +98,7 @@ class CleanupEngineIT {
     }
 
     @Test
-    void analysisGroupsByContent(@TempDir Path root) throws Exception {
+    void analysisGroupsByContent() throws Exception {
         Tree t = standardTree(root);
         CleanupRun run = engine.analyze(root, null);
 
@@ -77,7 +111,7 @@ class CleanupEngineIT {
     }
 
     @Test
-    void refusesDangerousRoots(@TempDir Path root) {
+    void refusesDangerousRoots() {
         Path driveRoot = root.getRoot();
         assertThatThrownBy(() -> engine.analyze(driveRoot, null))
             .isInstanceOf(IllegalArgumentException.class);
@@ -95,7 +129,7 @@ class CleanupEngineIT {
      * deletion can destroy the archive the whole product exists to protect.
      */
     @Test
-    void protectedMediaSurvivesConfirmedDeletion(@TempDir Path root) throws Exception {
+    void protectedMediaSurvivesConfirmedDeletion() throws Exception {
         Tree t = standardTree(root);
         CleanupRun run = engine.analyze(root, null);
 
@@ -113,7 +147,7 @@ class CleanupEngineIT {
     }
 
     @Test
-    void protectedMediaCannotEvenBeRequested(@TempDir Path root) throws Exception {
+    void protectedMediaCannotEvenBeRequested() throws Exception {
         standardTree(root);
         CleanupRun run = engine.analyze(root, null);
 
@@ -123,7 +157,7 @@ class CleanupEngineIT {
     }
 
     @Test
-    void deletesOnlySelectedGroups(@TempDir Path root) throws Exception {
+    void deletesOnlySelectedGroups() throws Exception {
         Tree t = standardTree(root);
         CleanupRun run = engine.analyze(root, null);
 
@@ -141,7 +175,7 @@ class CleanupEngineIT {
     }
 
     @Test
-    void reverifySkipsAFileThatChangedSincePreview(@TempDir Path root) throws Exception {
+    void reverifySkipsAFileThatChangedSincePreview() throws Exception {
         Tree t = standardTree(root);
         CleanupRun run = engine.analyze(root, null);
 
@@ -160,7 +194,7 @@ class CleanupEngineIT {
     }
 
     @Test
-    void skipsAFileThatDisappearedSincePreview(@TempDir Path root) throws Exception {
+    void skipsAFileThatDisappearedSincePreview() throws Exception {
         Tree t = standardTree(root);
         CleanupRun run = engine.analyze(root, null);
         Files.delete(t.exe);
@@ -173,7 +207,7 @@ class CleanupEngineIT {
     }
 
     @Test
-    void continuesPastAnUndeletableFile(@TempDir Path root) throws Exception {
+    void continuesPastAnUndeletableFile() throws Exception {
         Tree t = standardTree(root);
         CleanupRun run = engine.analyze(root, null);
 
@@ -194,7 +228,7 @@ class CleanupEngineIT {
     }
 
     @Test
-    void deletingNothingWhenNoGroupSelected(@TempDir Path root) throws Exception {
+    void deletingNothingWhenNoGroupSelected() throws Exception {
         Tree t = standardTree(root);
         CleanupRun run = engine.analyze(root, null);
 
@@ -207,7 +241,7 @@ class CleanupEngineIT {
     // ------------------------------------------------------------ US3: prune
 
     @Test
-    void prunesNestedEmptyChainInOnePass(@TempDir Path root) throws Exception {
+    void prunesNestedEmptyChainInOnePass() throws Exception {
         Path c = Files.createDirectories(root.resolve("a/b/c"));
         Path withFile = Files.createDirectories(root.resolve("d"));
         Files.write(withFile.resolve("photo.jpg"), "x".getBytes());
@@ -231,7 +265,7 @@ class CleanupEngineIT {
     }
 
     @Test
-    void prunePreservesTheSelectedRoot(@TempDir Path root) {
+    void prunePreservesTheSelectedRoot() {
         Path emptyRoot = root.resolve("only-child");
         try {
             Files.createDirectories(emptyRoot);
