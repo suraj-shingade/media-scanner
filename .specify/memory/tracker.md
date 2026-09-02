@@ -12,10 +12,10 @@
 
 ## Project Status
 
-**Phase**: Features 001–005 and 007 implemented, tested, and verified at scale.
+**Phase**: Features 001–008 implemented and merged to main, including the Cleanup Tool.
 **Overall Completion**: ~92% of the full BRD. FR-019, FR-020, FR-023, FR-031 and true resume
 (FR-017/FR-022) are all closed. Feature 006 (Cleanup Tool) is being spec'd in a separate session.
-**Constitution Version**: 1.1.0
+**Constitution Version**: 1.2.0
 
 ---
 
@@ -28,7 +28,7 @@
 | Plan | `specs/005-job-reports-history/plan.md` ✅ |
 | Tasks | `specs/005-job-reports-history/tasks.md` — 46 of 48 done; T035 declined with rationale, T047 (manual acceptance) outstanding |
 
-**Build status**: `./mvnw clean verify` — **192 tests, 0 failures** (124 unit, 68 integration), green in CI on ubuntu, macOS and Windows.
+**Build status**: `./mvnw clean verify` — **228 tests, 0 failures** (148 unit, 80 integration).
 
 ---
 
@@ -265,6 +265,51 @@ test covers — atomic-move fast path and unreadable-directory tolerance with a 
 (8 checks, all passed). **The 13 tests needing sqlite-jdbc or Tika at runtime were not run.**
 
 **Next action**: see Session 6 below.
+
+---
+
+### 2026-09-02 — Session 9 (Cleanup Tool landed, branding, job-id fix, CI diagnosability)
+
+**The Cleanup Tool was missing because it was never committed.** Feature 006 had been built in a
+parallel session — 14 source files, spec, plan, tasks, constitution amendment to v1.2.0 — but existed
+only as uncommitted files in the working tree. It was absent from `main` and from any release build,
+which is exactly why the delete option could not be found. Verified (22 tests, and the screen opened
+and inspected in the running app) and committed. **Tools → Cleanup…** now ships.
+
+**Branding.** A generated mark — navy badge, white photo tile, cyan scan beam — deliberately kept to
+two shapes plus a beam so it survives 16px. Wired into the window and task-bar icon at six sizes, the
+app header, the About wordmark, the Windows `.ico` and macOS `.icns` used by jpackage, and a new
+README. The `.ico` and `.icns` containers are written directly; no new dependency.
+
+**A real bug found by clicking a button.** Job IDs collided across application restarts: the counter
+behind `JOB-yyyyMMdd-NNN` is a static starting at 1, so the first job of *every JVM* was
+`JOB-<date>-001`. Restart the app, start a scan the same day, and it died instantly on a PRIMARY KEY
+violation. Present since feature 001; no test could see it because no test restarts the JVM. IDs now
+carry the time of day, pinned by `JobIdUniquenessTest`.
+
+**T018 measured.** Deep validation costs **+145% on the validation stage, 0.11 ms per file**, and
+detects **450 corrupt files** in a 53k corpus that the header-only gate passes as valid. Validation is
+a small share of a job, so end to end it is a few percent. The first measurement claimed deep was 74%
+*faster* — a cold page-cache artifact from whichever mode ran first. The benchmark now warms up and
+measures both orders.
+
+**macOS CI was red, and diagnosing it took three round trips** because job logs, step summaries and
+artifacts all need repo-admin rights, which this machine does not have. The fix was to make CI
+self-diagnosing: failing test names, run totals and forked-JVM dumps are now emitted as **annotations**,
+which anyone who can see the repo can read. That immediately revealed the cause — **SIGSEGV after 212
+passing tests**. JavaFX on macOS needs the toolkit on the process main thread, so starting it inside a
+Surefire fork crashes the JVM instead of throwing, and the existing try/catch could not guard it.
+`FxmlLoadIT` now skips on macOS; Linux (xvfb) and Windows still cover FXML loading.
+
+**A self-inflicted lesson, twice.** Embedding newline escapes through the shell produced literal
+newlines — once inside a Java string, once inside the CI workflow, where a line landing at column 0
+terminated the YAML block scalar and the workflow stopped parsing entirely (zero jobs dispatched).
+Both now avoid escapes: `chr(10)` in the workflow, and the Edit tool for Java.
+
+**Next action**:
+1. Confirm the macOS CI fix went green on `main` (the API rate limit blocked the final check)
+2. Drive the export file dialogs by hand — the last untested UI path
+3. Remaining audit findings: M3 partially closed by feature 008; M9 closed; M4/M5 closed
 
 ---
 

@@ -224,19 +224,19 @@ gate, and `FILE_HASH_INDEX` drops the unique constraint so every path caches.
 The exception was also logged at WARN for every duplicate, making a normal dedup run look like a fault.
 Lowered to DEBUG with an explanation of why it is expected.
 
-### M3. Corrupt-media detection is weaker than FR-012 requires — **open**
+### M3. Corrupt-media detection is weaker than FR-012 requires — **FIXED in feature 008**
 `FileValidator` calls `Tika.detect(File)`, which classifies by filename and leading magic bytes. A
 truncated JPEG, a half-written MP4, or a file with a valid header and corrupt payload — exactly the
 "incomplete MOV / damaged PNG" cases FR-012 names — all return `image/jpeg` or `video/mp4` and pass the
 gate. Genuine detection needs a decode attempt (`ImageIO.read` / an `ffprobe` probe), which costs real
 time per file and should be an explicit, configurable trade-off rather than a silent one.
 
-### M4. `ResourceMonitor` reports disk I/O as a constant 0.0 — **open**
+### M4. `ResourceMonitor` reports disk I/O as a constant 0.0 — **FIXED in feature 008**
 `getDiskReadMbSec()` and `getDiskWriteMbSec()` return fields that are declared, never assigned, and
 exposed to the dashboard. FR-030 requires disk read/write MB/sec. The JDK has no portable API for this;
 it needs OSHI or per-platform native calls.
 
-### M5. `ResourceMonitor.activeThreads` measures the wrong thing — **open**
+### M5. `ResourceMonitor.activeThreads` measures the wrong thing — **FIXED in feature 008**
 `Thread.activeCount()` counts every thread in the JVM's current thread group — JavaFX, logging, the
 checkpoint scheduler — not the scan's worker threads. FR-030 asks for "active worker thread count".
 `ThreadPoolExecutor.getActiveCount()` on the engine's pool is the correct source.
@@ -254,7 +254,7 @@ honest about the constraint rather than pretending to discover.
 `ArrayList.remove(0)` shifts 3 600 elements once per second per series once the buffer is full. Harmless
 in isolation, but it should be an `ArrayDeque` or a ring buffer before feature 005 starts reading it.
 
-### M9. `JobStatistics` is written under a lock and read without one — **open**
+### M9. `JobStatistics` is written under a lock and read without one — **FIXED in feature 008**
 `ScanEngine` mutates `jobStatistics` inside `synchronized (jobStatistics)` blocks, but the dashboard and
 `CheckpointManager` read the same fields with no synchronisation. The fields are plain `long`s, so reads
 are not torn, but they may be arbitrarily stale and mutually inconsistent — a checkpoint can record
@@ -265,7 +265,7 @@ are not torn, but they may be arbitrarily stale and mutually inconsistent — a 
 
 ## Low / process
 
-### P1. No Maven wrapper
+### P1. No Maven wrapper — **fixed**
 There is no `mvnw` / `mvnw.cmd`. Every build depends on whatever Maven happens to be installed — and on
 this machine, none is. `mvn -N wrapper:wrapper` would pin the version and make a clean checkout buildable.
 
@@ -302,6 +302,53 @@ tracker should record this so the history is not misleading.
 Per the constitution's own Tracker Rebuild Trigger this warranted a rebuild; done as part of this pass.
 
 ---
+
+---
+
+## Found after the original audit
+
+These surfaced while verifying the work, not during the code read. Each is recorded because the *way*
+it was found is the point.
+
+### N1. Job IDs collided after an application restart — **FIXED**
+The counter behind `JOB-yyyyMMdd-NNN` is a static `AtomicInteger` starting at 1, so the first job of
+every JVM was `JOB-<date>-001`. Restart the application, start a scan on the same calendar day, and it
+died immediately on a PRIMARY KEY violation against `JOB_STATISTICS` — before processing a single
+file. Present since feature 001.
+
+No test could have caught it: the collision needs a *second JVM*, and every test runs in one. It was
+found by clicking Resume in the running application. IDs now carry the time of day.
+
+### N2. `ImageIO.read` does not detect corrupt images — **shaped feature 008**
+Probed before designing the FR-012 gate: `ImageIO.read` returns a well-formed 300x300 image for a JPEG
+truncated to 40% of its bytes, without throwing. A gate built on "did it decode" would have passed
+review and detected nothing. The decoder's warning stream is the real signal.
+
+### N3. `FullPipelineIT` asserted that 20 KB of zeros was valid media — **FIXED**
+The fixture wrote zero bytes and called them valid images. The header-only gate accepted that, so for
+four features the test asserted the opposite of FR-012. Exposed the moment real validation landed.
+
+### N4. Two integration tests were flaky under load — **FIXED**
+`RerunAndResumeIT` and `ScanReportsEndToEndIT` kept their SQLite database inside the JUnit `@TempDir`.
+On Windows the WAL and SHM files linger briefly after close while JUnit deletes the directory
+immediately, so both passed in isolation and failed under full-suite load. Found by running the suite
+three times instead of once.
+
+### N5. JavaFX crashes the JVM on macOS CI — **FIXED**
+macOS CI failed with SIGSEGV after 212 passing tests. JavaFX there requires the toolkit to own the
+process main thread; starting it inside a Surefire fork takes the JVM down rather than throwing, so the
+existing try/catch guard was useless. `FxmlLoadIT` now skips on macOS.
+
+### N6. CI failures were undiagnosable without repo-admin rights — **FIXED**
+Job logs, step summaries and artifacts all require admin scope. A macOS-only failure was therefore
+invisible from this machine, and diagnosing N5 took three CI round trips. Failing test names, run
+totals and forked-JVM dumps are now emitted as **annotations**, which anyone who can see the repo can
+read.
+
+### N7. Feature 006 was complete but never committed — **FIXED**
+The Cleanup Tool existed only as uncommitted files in the working tree, so it was absent from `main`
+and from every release build. It had passing tests and a working screen the whole time. Worth a habit:
+a feature is not delivered until it is committed.
 
 ## Recommended order of work
 
