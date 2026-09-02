@@ -63,6 +63,9 @@ jobs:
 
           totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
           skipped_classes = []
+          # Which test failed, and why. Without this the only way to find out is downloading the
+          # artifact, which needs repo-admin rights.
+          failures = []
           files = glob.glob("target/surefire-reports/TEST-*.xml") + \
                   glob.glob("target/failsafe-reports/TEST-*.xml")
 
@@ -76,6 +79,13 @@ jobs:
               if int(suite.get("skipped", 0) or 0) > 0:
                   skipped_classes.append(
                       "%s (%s skipped)" % (suite.get("name"), suite.get("skipped")))
+              for case in suite.iter("testcase"):
+                  for kind in ("failure", "error"):
+                      node = case.find(kind)
+                      if node is not None:
+                          failures.append((case.get("classname"), case.get("name"), kind,
+                                           (node.get("message") or "") + "
+" + (node.text or "")))
 
           ran = totals["tests"] - totals["skipped"]
           lines = [
@@ -99,6 +109,23 @@ jobs:
           if summary:
               with open(summary, "a", encoding="utf-8") as fh:
                   fh.write(out + "\n")
+
+          if failures:
+              detail = ["", "### Failures", ""]
+              for cls, name, kind, msg in failures:
+                  detail.append("**%s.%s** (%s)" % (cls, name, kind))
+                  detail.append("")
+                  detail.append("```")
+                  detail.append(msg.strip()[:1500] if msg else "(no message)")
+                  detail.append("```")
+                  detail.append("")
+              block = "
+".join(detail)
+              print(block)
+              if summary:
+                  with open(summary, "a", encoding="utf-8") as fh:
+                      fh.write(block + "
+")
 
           if not files:
               sys.exit("No test report files found — the test phase did not run.")
