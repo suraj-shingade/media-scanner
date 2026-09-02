@@ -84,8 +84,8 @@ jobs:
                       node = case.find(kind)
                       if node is not None:
                           failures.append((case.get("classname"), case.get("name"), kind,
-                                           (node.get("message") or "") + "
-" + (node.text or "")))
+                                           (node.get("message") or "") + chr(10)
+                                           + (node.text or "")))
 
           ran = totals["tests"] - totals["skipped"]
           lines = [
@@ -119,13 +119,11 @@ jobs:
                   detail.append(msg.strip()[:1500] if msg else "(no message)")
                   detail.append("```")
                   detail.append("")
-              block = "
-".join(detail)
+              block = chr(10).join(detail)
               print(block)
               if summary:
                   with open(summary, "a", encoding="utf-8") as fh:
-                      fh.write(block + "
-")
+                      fh.write(block + chr(10))
 
           if not files:
               sys.exit("No test report files found — the test phase did not run.")
