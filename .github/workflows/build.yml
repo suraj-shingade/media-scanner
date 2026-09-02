@@ -63,6 +63,9 @@ jobs:
 
           totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0}
           skipped_classes = []
+          # Which test failed, and why. Without this the only way to find out is downloading the
+          # artifact, which needs repo-admin rights.
+          failures = []
           files = glob.glob("target/surefire-reports/TEST-*.xml") + \
                   glob.glob("target/failsafe-reports/TEST-*.xml")
 
@@ -76,6 +79,13 @@ jobs:
               if int(suite.get("skipped", 0) or 0) > 0:
                   skipped_classes.append(
                       "%s (%s skipped)" % (suite.get("name"), suite.get("skipped")))
+              for case in suite.iter("testcase"):
+                  for kind in ("failure", "error"):
+                      node = case.find(kind)
+                      if node is not None:
+                          failures.append((case.get("classname"), case.get("name"), kind,
+                                           (node.get("message") or "") + chr(10)
+                                           + (node.text or "")))
 
           ran = totals["tests"] - totals["skipped"]
           lines = [
@@ -99,6 +109,47 @@ jobs:
           if summary:
               with open(summary, "a", encoding="utf-8") as fh:
                   fh.write(out + "\n")
+
+          if failures:
+              detail = ["", "### Failures", ""]
+              for cls, name, kind, msg in failures:
+                  detail.append("**%s.%s** (%s)" % (cls, name, kind))
+                  detail.append("")
+                  detail.append("```")
+                  detail.append(msg.strip()[:1500] if msg else "(no message)")
+                  detail.append("```")
+                  detail.append("")
+              block = chr(10).join(detail)
+              print(block)
+              if summary:
+                  with open(summary, "a", encoding="utf-8") as fh:
+                      fh.write(block + chr(10))
+
+              # Also emit each failure as a workflow-command annotation. Annotations are readable
+              # through the API without repo-admin rights, unlike job logs, step summaries and
+              # artifacts — so a failure stays diagnosable by anyone who can see the repo.
+              for cls, name, kind, msg in failures:
+                  encoded = (msg or "").strip()[:900]
+                  encoded = encoded.replace("%", "%25")
+                  encoded = encoded.replace(chr(13), "%0D").replace(chr(10), "%0A")
+                  print("::error title=%s.%s (%s)::%s" % (cls, name, kind, encoded))
+
+          # Totals as an annotation too, so a build that fails with every test passing is still
+          # legible from outside — that combination means the JVM died rather than an assertion.
+          print("::notice title=%s test totals::ran=%d failures=%d errors=%d skipped=%d files=%d"
+                % (os.environ.get("MATRIX_OS", "runner"), ran, totals["failures"],
+                   totals["errors"], totals["skipped"], len(files)))
+
+          # A forked test JVM that crashes leaves a dump instead of a failed testcase. Surface it.
+          for dump in sorted(glob.glob("target/*-reports/*.dump")
+                             + glob.glob("target/*-reports/*.dumpstream")):
+              try:
+                  with open(dump, "r", encoding="utf-8", errors="replace") as fh:
+                      body = fh.read().strip()[:900]
+              except OSError:
+                  continue
+              body = body.replace("%", "%25").replace(chr(13), "%0D").replace(chr(10), "%0A")
+              print("::error title=forked JVM dump %s::%s" % (os.path.basename(dump), body))
 
           if not files:
               sys.exit("No test report files found — the test phase did not run.")

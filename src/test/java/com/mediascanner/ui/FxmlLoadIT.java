@@ -20,7 +20,12 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * all four.
  *
  * <p>Skips itself when no JavaFX toolkit can start (a headless machine with no virtual display)
- * rather than failing the build for an environment problem. CI runs it under xvfb.
+ * rather than failing the build for an environment problem. CI runs it under xvfb on Linux.
+ *
+ * <p>Skipped outright on macOS. JavaFX there requires the toolkit to own the process main thread,
+ * and starting it inside a Surefire fork does not throw — it takes the JVM down with a SIGSEGV,
+ * which no try/catch can guard. FXML loading is parsing and reflection, so it is platform
+ * independent; validating it on Linux and Windows covers the risk this test exists for.
  */
 class FxmlLoadIT {
 
@@ -28,6 +33,10 @@ class FxmlLoadIT {
 
     @BeforeAll
     static void startToolkit() {
+        if (System.getProperty("os.name", "").toLowerCase().contains("mac")) {
+            toolkitStarted = false;
+            return;
+        }
         try {
             CountDownLatch latch = new CountDownLatch(1);
             Platform.startup(latch::countDown);
@@ -51,7 +60,8 @@ class FxmlLoadIT {
     }
 
     private void assertLoads(String resource) throws Exception {
-        assumeTrue(toolkitStarted, "JavaFX toolkit unavailable in this environment");
+        assumeTrue(toolkitStarted,
+            "JavaFX toolkit unavailable here (always skipped on macOS: see class javadoc)");
 
         AtomicReference<Throwable> failure = new AtomicReference<>();
         AtomicReference<Object> loaded = new AtomicReference<>();
