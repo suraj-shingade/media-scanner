@@ -13,8 +13,15 @@ public class Job {
     public enum DuplicatePolicy { SKIP, MOVE_TO_BUCKET, KEEP_BOTH }
     public enum Status { RUNNING, PAUSED, COMPLETED, FAILED, STOPPED }
 
-    private static final AtomicInteger dailyCounter = new AtomicInteger(1);
-    private static final DateTimeFormatter JOB_DATE_FMT = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final AtomicInteger sequence = new AtomicInteger(1);
+    /**
+     * Includes the time of day. The previous format was date plus a counter that starts at 1 in
+     * every JVM, so the first job after any application restart was always JOB-<date>-001 and
+     * collided with the row from the earlier run: a PRIMARY KEY violation on JOB_STATISTICS that
+     * killed the scan before it processed a file.
+     */
+    private static final DateTimeFormatter JOB_ID_FMT =
+        DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
 
     private String jobId;
     private String sourcePath;
@@ -60,8 +67,8 @@ public class Job {
                 Choose a source outside the target folder.""");
         }
         Job job = new Job();
-        job.jobId = "JOB-" + LocalDateTime.now().format(JOB_DATE_FMT)
-                  + "-" + String.format("%03d", dailyCounter.getAndIncrement());
+        job.jobId = "JOB-" + LocalDateTime.now().format(JOB_ID_FMT)
+                  + "-" + String.format("%03d", sequence.getAndIncrement());
         job.sourcePath = sourcePath;
         job.targetPath = targetPath;
         job.transferMode = transferMode;

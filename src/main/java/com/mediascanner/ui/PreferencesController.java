@@ -14,6 +14,7 @@ public class PreferencesController {
 
     @FXML private TextField threadCountField;
     @FXML private CheckBox highPriorityCheck;
+    @FXML private CheckBox deepValidationCheck;
     @FXML private TextField imageSizeField;
     @FXML private TextField videoSizeField;
     @FXML private ComboBox<String> folderPatternCombo;
@@ -28,6 +29,7 @@ public class PreferencesController {
 
         threadCountField.setText(String.valueOf(config.getWorkerThreadCount()));
         highPriorityCheck.setSelected(config.isHighPriorityMode());
+        deepValidationCheck.setSelected(config.isDeepValidationEnabled());
         imageSizeField.setText(String.valueOf(config.getImageSizeThresholdKb()));
         videoSizeField.setText(String.valueOf(config.getVideoSizeThresholdKb()));
 
@@ -49,6 +51,7 @@ public class PreferencesController {
 
         appConfig.setWorkerThreadCount(Integer.parseInt(threadCountField.getText().trim()));
         appConfig.setHighPriorityMode(highPriorityCheck.isSelected());
+        appConfig.setDeepValidationEnabled(deepValidationCheck.isSelected());
         appConfig.setImageSizeThresholdKb(Integer.parseInt(imageSizeField.getText().trim()));
         appConfig.setVideoSizeThresholdKb(Integer.parseInt(videoSizeField.getText().trim()));
         appConfig.setFolderPattern(mapDisplayToPattern(folderPatternCombo.getValue()));

@@ -33,6 +33,9 @@
                     <Label text="Video min size (KB):" minWidth="200"/>
                     <TextField fx:id="videoSizeField" prefWidth="80"/>
                 </HBox>
+                <CheckBox fx:id="deepValidationCheck" text="Detect corrupt media (decode each file)"/>
+                <Label styleClass="subtle" wrapText="true"
+                       text="Decodes every image and probes every video so truncated or damaged files are sent to the failure bucket instead of into your archive. Turning this off restores the faster header-only check, which cannot detect a truncated file."/>
             </VBox>
         </Tab>
 

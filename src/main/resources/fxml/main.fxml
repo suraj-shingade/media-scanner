@@ -3,6 +3,7 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.text.*?>
 <?import javafx.geometry.*?>
+<?import javafx.scene.image.*?>
 
 <BorderPane xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="com.mediascanner.ui.MainController"
@@ -11,7 +12,12 @@
     <top>
         <VBox styleClass="header-bar">
             <padding><Insets top="12" right="16" bottom="12" left="16"/></padding>
-            <Label text="MediaScanner" styleClass="app-title"/>
+            <HBox spacing="10" alignment="CENTER_LEFT">
+                <ImageView fitWidth="28" fitHeight="28" preserveRatio="true" smooth="true">
+                    <image><Image url="@../images/logo-64.png"/></image>
+                </ImageView>
+                <Label text="MediaScanner" styleClass="app-title"/>
+            </HBox>
         </VBox>
     </top>
 
