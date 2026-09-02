@@ -134,6 +134,23 @@ jobs:
                   encoded = encoded.replace(chr(13), "%0D").replace(chr(10), "%0A")
                   print("::error title=%s.%s (%s)::%s" % (cls, name, kind, encoded))
 
+          # Totals as an annotation too, so a build that fails with every test passing is still
+          # legible from outside — that combination means the JVM died rather than an assertion.
+          print("::notice title=%s test totals::ran=%d failures=%d errors=%d skipped=%d files=%d"
+                % (os.environ.get("MATRIX_OS", "runner"), ran, totals["failures"],
+                   totals["errors"], totals["skipped"], len(files)))
+
+          # A forked test JVM that crashes leaves a dump instead of a failed testcase. Surface it.
+          for dump in sorted(glob.glob("target/*-reports/*.dump")
+                             + glob.glob("target/*-reports/*.dumpstream")):
+              try:
+                  with open(dump, "r", encoding="utf-8", errors="replace") as fh:
+                      body = fh.read().strip()[:900]
+              except OSError:
+                  continue
+              body = body.replace("%", "%25").replace(chr(13), "%0D").replace(chr(10), "%0A")
+              print("::error title=forked JVM dump %s::%s" % (os.path.basename(dump), body))
+
           if not files:
               sys.exit("No test report files found — the test phase did not run.")
           if ran == 0:
