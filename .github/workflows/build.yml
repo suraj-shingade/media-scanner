@@ -125,6 +125,15 @@ jobs:
                   with open(summary, "a", encoding="utf-8") as fh:
                       fh.write(block + chr(10))
 
+              # Also emit each failure as a workflow-command annotation. Annotations are readable
+              # through the API without repo-admin rights, unlike job logs, step summaries and
+              # artifacts — so a failure stays diagnosable by anyone who can see the repo.
+              for cls, name, kind, msg in failures:
+                  encoded = (msg or "").strip()[:900]
+                  encoded = encoded.replace("%", "%25")
+                  encoded = encoded.replace(chr(13), "%0D").replace(chr(10), "%0A")
+                  print("::error title=%s.%s (%s)::%s" % (cls, name, kind, encoded))
+
           if not files:
               sys.exit("No test report files found — the test phase did not run.")
           if ran == 0:
