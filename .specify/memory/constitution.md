@@ -1,23 +1,27 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version Change: 1.0.0 → 1.1.0 (MINOR — new sections added; BRD fully ingested; tracker rebuilt)
+Version Change: 1.1.0 → 1.2.0 (MINOR — new principle added; no existing principle altered)
 Modified Principles:
-  - I. Performance-First Architecture → expanded with Java 21 + JavaFX 21 stack, NFR thread rules,
-    High-Priority Mode (NFR-005), and RAM caching mandate (NFR-004)
-  - II. Context Preservation and Resume Support → clarified checkpoint cadence (1000 files OR 60 s),
-    JSON state format codified (FR-014), background execution added (FR-021)
-  - IV. Observability → FR-031 historical throughput graph added; disk read/write MB/sec added
-  - V. Duplicate Handling → FR-009 filename-collision variant distinguished from hash-duplicate
+  - None. Principles I–VIII are unchanged in wording and in numbering.
 Added Sections:
-  - VII. Media Validation and File Quality Gates (FR-010, FR-011, FR-012, FR-013, FR-020)
-  - VIII. Folder Organization and Transfer Discipline (FR-001–FR-009)
-  - Technology Stack Reference (canonical stack locked from BRD)
-  - FR Traceability Matrix (FR-001 through FR-031 mapped to principles)
+  - IX. Destructive Operations Safety — governs any operation whose purpose is to permanently
+    remove user data. Introduced by feature 006 (Cleanup Tool), the first capability that deletes
+    user files as its primary function rather than as the second half of a confirmed Move.
+Updated Sections:
+  - FR Traceability Matrix — FR-032 through FR-058 added and mapped
+  - Quality Gates — G6 widened from "FR-001 through FR-031" to the full current FR set;
+    G7 (Destructive Review) added, requiring an explicit Principle IX check and a protected-media
+    survival test for any feature that can permanently remove user data
+  - Compliance Review — PRs touching destructive paths must now pass a Check against IX
 Updated Templates:
-  - .specify/templates/plan-template.md  ✅ Constitution Check gates still valid; stack fields now pre-filled by convention
-  - .specify/templates/spec-template.md  ✅ No structural changes required; NFR section guidance added in comments
-  - .specify/templates/tasks-template.md ✅ No structural changes required; media-validation task type implied by Phase 2
+  - .specify/templates/plan-template.md  ✅ No change needed; its Constitution Check gate is derived
+    from this file rather than enumerating principles inline
+  - .specify/templates/spec-template.md  ✅ No structural changes required
+  - .specify/templates/tasks-template.md ✅ No structural changes required
+Numbering note:
+  - IX is appended after VIII rather than inserted beside the file-handling principles (VI, VII) so
+    that existing references to "Principle VIII" in specs and audit documents remain valid.
 Deferred TODOs:
   - None remaining — FR-001–FR-022 fully captured from MediaScanner BRD.docx
   - Phase 2 enhancements (SHA-256 dedup, GPS, AI similarity, Watch Folder, Cloud) are explicitly
@@ -235,6 +239,50 @@ Non-negotiable rules:
 Rationale: At this system scale, regressions in throughput or correctness are expensive
 to diagnose. Incremental delivery with per-story tests catches problems early.
 
+### IX. Destructive Operations Safety
+
+Any operation whose purpose is to permanently remove user data — files or directories — is a
+destructive operation and MUST satisfy every rule below. This principle governs deliberate deletion.
+It is distinct from Principle V, which forbids deletion as an unintended *side effect*, and from
+Principle VII, which permits deletion only as the second half of a confirmed Move.
+
+Non-negotiable rules:
+- **Preview before delete**: the user MUST be shown the complete set of items a destructive operation
+  would remove — path, size, and the reason each item qualified — before anything is removed.
+  A destructive operation that cannot enumerate its targets in advance MUST NOT run.
+- **Explicit confirmation**: removal MUST require an affirmative user action taken *after* the preview.
+  The confirmation MUST state the exact item count, the total bytes, and that the action is permanent
+  and cannot be undone. Abandoning at the confirmation step MUST leave the disk unmodified.
+- **No default destructive scope**: no deletable category, group, or selection may be pre-selected.
+  The user MUST opt in to every class of item that will be removed.
+- **Media is never deletable**: any file whose *contents* are a recognized image or video is protected
+  media and MUST NOT be removed by a destructive operation under any selection the user can make.
+- **Contents decide, not names**: classification that determines whether an item is eligible for
+  deletion MUST be derived from file contents. A file's name or extension MUST NOT influence the
+  verdict, in either direction.
+- **Re-verify immediately before acting**: a preview is a snapshot. Each item MUST be re-checked
+  immediately before it is removed, and MUST be skipped if it no longer matches the classification it
+  was previewed under. The skip MUST be recorded.
+- **Never escape the selected tree**: symbolic links, junctions and other reparse points MUST NOT be
+  followed, and no item outside the user-selected directory tree may be removed.
+- **Refuse dangerous roots**: a drive root, an operating-system directory, or a user profile root MUST
+  be refused as a target unless the user supplies an additional explicit override.
+- **Continue past individual failures**: an item that cannot be removed — locked, read-only,
+  permission-denied, path too long — MUST be recorded with its specific reason and MUST NOT abort the
+  remaining work.
+- **Cancellable**: analysis MUST be cancellable, and an in-progress removal MUST be stoppable. Items
+  already removed stay removed and MUST be reported as such.
+- **Durable report that outlives the data**: every run that removed at least one item MUST write a
+  persistent report listing each removed path with its size, classification and timestamp, plus every
+  skip and every failure with its reason. The report MUST remain readable after the application
+  restarts. Once the files are gone, this record is the only remaining evidence of what happened.
+
+Rationale: Every other safeguard in this constitution protects data that still exists — a bad transfer
+can be re-run, a corrupt index can be rebuilt, a wrong duplicate policy can be reversed by copying the
+file back. Permanent deletion has no such recovery path, and the blast radius is the user's irreplaceable
+archive. The cost of a preview step and a re-verification read is trivial against the cost of being
+wrong once.
+
 ## FR Traceability Matrix
 
 | FR | Description | Governing Principle |
@@ -270,6 +318,36 @@ to diagnose. Incremental delivery with per-story tests catches problems early.
 | FR-029 | ETA calculation | IV |
 | FR-030 | Resource utilization monitoring | IV |
 | FR-031 | Historical throughput graph | IV |
+| FR-032 | Recursive discovery of all file types, not only media | IX |
+| FR-033 | Content-based classification; filename ignored | IX |
+| FR-034 | MIME group assignment | IX |
+| FR-035 | Protected-media classification by contents | IX, VI |
+| FR-036 | Definite classification outcome for every file | IX, VI |
+| FR-037 | Cancellable analysis | IX, II |
+| FR-038 | Grouped deletion preview | IX, IV |
+| FR-039 | No destructive scope selected by default | IX |
+| FR-040 | Preview-before-delete gate | IX |
+| FR-041 | Confirmation states scope and irreversibility | IX |
+| FR-042 | Abandon at confirmation leaves disk unmodified | IX |
+| FR-043 | Permanent deletion, no quarantine or Recycle Bin | IX |
+| FR-044 | Re-verify each item immediately before removal | IX |
+| FR-045 | Protected media never deleted | IX, V |
+| FR-046 | Continue past individual deletion failures | IX, VI |
+| FR-047 | No link traversal outside the selected tree | IX |
+| FR-048 | Refuse dangerous roots without override | IX |
+| FR-049 | Deletion progress reporting and stop | IX, IV |
+| FR-050 | Empty directory identification | IX |
+| FR-051 | Bottom-up recursive pruning | IX |
+| FR-052 | Prune confirmation before removal | IX |
+| FR-053 | Selected root directory preserved | IX |
+| FR-054 | Any file makes a directory non-empty | IX |
+| FR-055 | Deletion report contents | IX, VI |
+| FR-056 | Skips and failures recorded with reasons | IX, VI |
+| FR-057 | Prune runs recorded in the same report format | IX |
+| FR-058 | Reports survive deletion and application restart | IX, III |
+
+FR-001 through FR-031 originate in the MediaScanner BRD. FR-032 through FR-058 were introduced by
+feature 006 (Cleanup Tool) and are governed primarily by Principle IX.
 
 ## Development Tracker Standards
 
@@ -323,7 +401,8 @@ justification logged in the tracker under Blockers.
 | **G3: Tasks Ready** | All tasks have phase assignment, story label, and parallelism flag |
 | **G4: Story Done** | Acceptance scenarios pass; benchmark within target for I/O stories |
 | **G5: Tracker Current** | Session log entry exists for today with next-action defined |
-| **G6: BRD Validated** | All FRs FR-001 through FR-031 are mapped to at least one user story in the spec |
+| **G6: BRD Validated** | Every FR in the traceability matrix that is in scope for the feature is mapped to at least one user story in its spec. FR-001–FR-031 (BRD-derived) MUST all be mapped before v1.0; FR-032 and above are mapped by the feature that introduces them |
+| **G7: Destructive Review** | Any feature containing a code path that permanently removes user files or directories has an explicit Principle IX check recorded in its plan, and an acceptance test proving that protected media survives a confirmed deletion |
 
 ## Governance
 
@@ -350,7 +429,14 @@ subsystem MUST pass a Constitution Check against Principles I, III, IV, and V be
 All PRs that touch file validation, transfer mode, or folder organization MUST pass a
 Constitution Check against Principles VI and VII before merge.
 
+All PRs that add or modify any code path capable of permanently removing a user file or directory
+MUST pass a Constitution Check against Principle IX before merge. This review is mandatory regardless
+of diff size: a one-line change to a deletion predicate or a classification rule is precisely the
+change Principle IX exists to catch. The review MUST confirm, at minimum, that the preview gate is
+intact, that protected media cannot be selected, that re-verification still precedes removal, and
+that the durable report still records every removal, skip and failure.
+
 For runtime development guidance, refer to the active plan at `specs/[active-feature]/plan.md`
 and the tracker at `.specify/memory/tracker.md`.
 
-**Version**: 1.1.0 | **Ratified**: 2026-06-03 | **Last Amended**: 2026-06-03
+**Version**: 1.2.0 | **Ratified**: 2026-06-03 | **Last Amended**: 2026-09-01
