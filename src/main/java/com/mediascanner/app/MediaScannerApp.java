@@ -57,6 +57,7 @@ public class MediaScannerApp extends Application {
         darkModeManager.apply(appConfig.isDarkMode());
 
         stage.setTitle("MediaScanner");
+        applyWindowIcons(stage);
         stage.setScene(scene);
         stage.setMinWidth(900);
         stage.setMinHeight(600);
@@ -70,6 +71,20 @@ public class MediaScannerApp extends Application {
 
         stage.show();
         log.info("MediaScanner UI ready");
+    }
+
+    /**
+     * Loads the app mark at several sizes. Windows picks 16/32 for the title bar and task bar and
+     * 256 for alt-tab, so handing it one large image and letting it downscale looks muddy.
+     */
+    private static void applyWindowIcons(Stage stage) {
+        for (String size : new String[] {"16", "32", "48", "64", "128", "256"}) {
+            try (var in = MediaScannerApp.class.getResourceAsStream("/images/logo-" + size + ".png")) {
+                if (in != null) stage.getIcons().add(new javafx.scene.image.Image(in));
+            } catch (Exception e) {
+                log.debug("Could not load app icon at {}px: {}", size, e.getMessage());
+            }
+        }
     }
 
     public static void handleQuit() {

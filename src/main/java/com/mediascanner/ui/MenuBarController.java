@@ -211,9 +211,13 @@ public class MenuBarController {
         miClearHashCache = new MenuItem("Clear Hash Cache…");
         miClearHashCache.setOnAction(e -> onClearHashCache());
 
+        MenuItem miCleanup = new MenuItem("Cleanup…");
+        miCleanup.setOnAction(e -> onCleanup());
+
         menu.getItems().addAll(
             miViewFailureReport, miOpenLogFile,
-            new SeparatorMenuItem(), miClearHashCache);
+            new SeparatorMenuItem(), miClearHashCache,
+            new SeparatorMenuItem(), miCleanup);
         return menu;
     }
 
@@ -430,6 +434,11 @@ public class MenuBarController {
 
     public void onViewJobHistory() {
         screenNavigator.navigateTo(ScreenType.JOB_HISTORY);
+    }
+
+    /** Opens the Cleanup screen (feature 006). Destructive work lives on its own screen. */
+    public void onCleanup() {
+        screenNavigator.navigateTo(ScreenType.CLEANUP);
     }
 
     public void onToggleDarkMode() {

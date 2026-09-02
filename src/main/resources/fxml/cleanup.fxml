@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.geometry.*?>
+
+<BorderPane xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.mediascanner.ui.CleanupController"
+            prefWidth="1000" prefHeight="700">
+
+    <top>
+        <VBox styleClass="header-bar">
+            <padding><Insets top="12" right="16" bottom="12" left="16"/></padding>
+            <Label text="Cleanup" styleClass="app-title"/>
+        </VBox>
+    </top>
+
+    <center>
+        <VBox spacing="12">
+            <padding><Insets top="20" right="24" bottom="20" left="24"/></padding>
+
+            <!-- Directory selection -->
+            <VBox spacing="6">
+                <Label text="Directory to clean" styleClass="section-label"/>
+                <HBox spacing="8">
+                    <TextField fx:id="directoryField" HBox.hgrow="ALWAYS"
+                               promptText="Select a folder..." editable="false"/>
+                    <Button text="Browse..." onAction="#onBrowse"/>
+                    <Button fx:id="analyzeButton" text="Analyze" onAction="#onAnalyze"
+                            disable="true"/>
+                </HBox>
+            </VBox>
+
+            <Label fx:id="warningLabel" wrapText="true"
+                   style="-fx-text-fill: #b00020; -fx-font-weight: bold;" managed="false"
+                   visible="false"/>
+
+            <Separator/>
+
+            <!-- Preview -->
+            <Label text="What was found" styleClass="section-label"/>
+            <TableView fx:id="groupTable" prefHeight="220">
+                <columns>
+                    <TableColumn fx:id="selectColumn" text="Delete" prefWidth="70"/>
+                    <TableColumn fx:id="groupColumn" text="Group" prefWidth="260"/>
+                    <TableColumn fx:id="countColumn" text="Files" prefWidth="110"/>
+                    <TableColumn fx:id="sizeColumn" text="Size" prefWidth="140"/>
+                </columns>
+            </TableView>
+
+            <Label text="Files in the selected group" styleClass="section-label"/>
+            <ListView fx:id="fileList" prefHeight="180"/>
+
+            <Label fx:id="statusLabel" text="Choose a folder and click Analyze."/>
+
+            <!-- Actions -->
+            <HBox spacing="12" alignment="CENTER_RIGHT">
+                <Button fx:id="pruneButton" text="Prune Empty Folders..."
+                        onAction="#onPruneEmptyFolders" disable="true"/>
+                <Button fx:id="deleteButton" text="Delete Selected..." onAction="#onDelete"
+                        disable="true"
+                        style="-fx-background-color: #b00020; -fx-text-fill: white;"/>
+            </HBox>
+        </VBox>
+    </center>
+
+    <bottom>
+        <Label fx:id="footerLabel" text="Deletion is permanent and cannot be undone."
+               style="-fx-padding: 6 16 6 16; -fx-background-color: #f0f0f0;"/>
+    </bottom>
+</BorderPane>
