@@ -34,7 +34,12 @@ default, never moving unless you choose to.
 | **Dashboard** | Live counts, throughput, ETA, resource use, and a throughput chart |
 | **Summary** | The full end-of-job record, exportable as JSON, CSV or a self-contained HTML page |
 | **Job History** | Every job ever run, browsable after restart, with its stored throughput chart |
-| **Cleanup** | Permanently delete non-media files by detected type, behind a preview-and-confirm gate |
+| **Delete Files & Folders** | Permanently delete non-media files by detected type, by file format, and prune empty folders — either straight away after confirming what to remove, or after reviewing a scan. `View > Delete Files & Folders` (Ctrl+5) |
+
+Deletion always asks first. In the direct mode the confirmation names the criteria and comes *before*
+the walk starts, so files are removed as they are found in a single pass; in the review mode it names
+a file count. Either way the engine re-reads each file's contents immediately before deleting it, so
+a photo is never deleted — not by group, and not by naming its extension.
 
 ## Reports
 

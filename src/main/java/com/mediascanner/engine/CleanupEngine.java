@@ -99,6 +99,100 @@ public class CleanupEngine {
         return run;
     }
 
+    /**
+     * Progress of a scan-and-delete pass, reported as it happens.
+     *
+     * @param examined files looked at so far
+     * @param deleted  files removed so far
+     * @param bytes    bytes freed so far
+     * @param current  the file just handled, for a live message
+     */
+    public record DeleteProgress(int examined, int deleted, long bytes, Path current) {}
+
+    /**
+     * Walks {@code root} and deletes matching files <em>as they are found</em>, in a single pass.
+     *
+     * <p>The user confirms the criteria before this starts, not a file count afterwards, so there is
+     * no separate preview to hold in memory and no second walk. Every file still passes the same
+     * per-file guard as {@link #delete}: {@link #deleteOne} re-checks that the content is not
+     * protected media immediately before removal, so naming a media extension still deletes nothing.
+     *
+     * @return the run, whose candidates carry the outcome of each file, and the delete result
+     */
+    public StreamingResult deleteWhileScanning(Path root,
+                                               Set<MimeGroup> groups,
+                                               Set<String> extensions,
+                                               Consumer<DeleteProgress> onProgress) {
+        DangerousRoots.Refusal refusal = DangerousRoots.check(root);
+        if (refusal != null) {
+            throw new IllegalArgumentException(refusal.getReason());
+        }
+        for (MimeGroup group : groups) {
+            if (!group.isDeletable()) {
+                throw new IllegalArgumentException(
+                    "Group " + group + " can never be deleted (Constitution IX)");
+            }
+        }
+        resetCancel();
+
+        Set<MimeGroup> selected = groups.isEmpty()
+            ? EnumSet.noneOf(MimeGroup.class) : EnumSet.copyOf(groups);
+        Set<String> wanted = new java.util.HashSet<>();
+        for (String ext : extensions) {
+            String normalised = normaliseExtension(ext);
+            if (!normalised.isEmpty()) wanted.add(normalised);
+        }
+
+        CleanupRun run = new CleanupRun(
+            "CLEAN-" + LocalDateTime.now().format(RUN_ID_FORMAT), root, Instant.now());
+        DeleteResult result = new DeleteResult();
+        int[] examined = {0};
+
+        scanner.walkFiles(root, path -> {
+            CleanupCandidate candidate = classifyOne(path);
+            examined[0]++;
+
+            boolean byGroup = selected.contains(candidate.getGroup());
+            boolean byExtension = !wanted.isEmpty() && wanted.contains(extensionOf(path));
+            if (byGroup || byExtension) {
+                run.add(candidate);
+                deleteOne(candidate, result);
+            }
+
+            if (onProgress != null) {
+                onProgress.accept(new DeleteProgress(
+                    examined[0], result.deletedCount(), result.bytesDeleted(), path));
+            }
+        }, cancelled::get);
+
+        if (cancelled.get()) {
+            run.markCancelled();
+            log.info("Cleanup stopped by user: {} examined, {} deleted",
+                examined[0], result.deletedCount());
+        } else {
+            log.info("Cleanup examined {} files beneath {}, deleted {} ({} bytes)",
+                examined[0], root, result.deletedCount(), result.bytesDeleted());
+        }
+        return new StreamingResult(run, result, examined[0]);
+    }
+
+    /** What a scan-and-delete pass produced: the run for reporting, plus the outcome. */
+    public static class StreamingResult {
+        private final CleanupRun run;
+        private final DeleteResult result;
+        private final int examined;
+
+        StreamingResult(CleanupRun run, DeleteResult result, int examined) {
+            this.run = run;
+            this.result = result;
+            this.examined = examined;
+        }
+
+        public CleanupRun getRun() { return run; }
+        public DeleteResult getResult() { return result; }
+        public int getExamined() { return examined; }
+    }
+
     private CleanupCandidate classifyOne(Path path) {
         long size;
         try {
@@ -142,6 +236,21 @@ public class CleanupEngine {
      * @throws IllegalArgumentException if a non-deletable group is requested (FR-045)
      */
     public DeleteResult delete(CleanupRun run, Set<MimeGroup> groups) {
+        return delete(run, groups, Set.of());
+    }
+
+    /**
+     * Deletes candidates selected by MIME group <em>or</em> by filename extension.
+     *
+     * <p>Extensions are a convenience for the direct-delete mode, where a user names the formats
+     * they want gone rather than reviewing what was found. They are strictly additive and can never
+     * widen what is deletable: {@link #deleteOne} re-classifies every file by content immediately
+     * before removing it, so naming {@code jpg} here still deletes nothing — the file is protected
+     * media and is skipped (FR-045, Constitution IX).
+     *
+     * @param extensions lowercase, without the leading dot; empty means "match on group only"
+     */
+    public DeleteResult delete(CleanupRun run, Set<MimeGroup> groups, Set<String> extensions) {
         for (MimeGroup group : groups) {
             if (!group.isDeletable()) {
                 throw new IllegalArgumentException(
@@ -154,13 +263,22 @@ public class CleanupEngine {
             ? EnumSet.noneOf(MimeGroup.class)
             : EnumSet.copyOf(groups);
 
+        Set<String> wantedExtensions = new java.util.HashSet<>();
+        for (String ext : extensions) {
+            String normalised = normaliseExtension(ext);
+            if (!normalised.isEmpty()) wantedExtensions.add(normalised);
+        }
+
         DeleteResult result = new DeleteResult();
         for (CleanupCandidate candidate : run.getCandidates()) {
             if (cancelled.get()) {
                 log.info("Cleanup deletion stopped by user after {} files", result.deletedCount());
                 break;
             }
-            if (!selected.contains(candidate.getGroup())) {
+            boolean byGroup = selected.contains(candidate.getGroup());
+            boolean byExtension = !wantedExtensions.isEmpty()
+                && wantedExtensions.contains(extensionOf(candidate.getPath()));
+            if (!byGroup && !byExtension) {
                 continue;
             }
             deleteOne(candidate, result);
@@ -170,6 +288,25 @@ public class CleanupEngine {
             result.deletedCount(), result.bytesDeleted(),
             result.getSkipped().size(), result.getFailed().size());
         return result;
+    }
+
+    /** Lowercase extension without the dot, or "" when the name has none. */
+    public static String extensionOf(Path path) {
+        Path name = path.getFileName();
+        if (name == null) return "";
+        String text = name.toString();
+        int dot = text.lastIndexOf('.');
+        return (dot < 0 || dot == text.length() - 1)
+            ? "" : text.substring(dot + 1).toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /** Accepts "jpg", ".jpg", "*.jpg" or "JPG" and yields "jpg". */
+    public static String normaliseExtension(String raw) {
+        if (raw == null) return "";
+        String text = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        if (text.startsWith("*")) text = text.substring(1);
+        if (text.startsWith(".")) text = text.substring(1);
+        return text.trim();
     }
 
     private void deleteOne(CleanupCandidate candidate, DeleteResult result) {

@@ -189,12 +189,20 @@ public class MenuBarController {
         miJobHistory.setAccelerator(javafx.scene.input.KeyCombination.keyCombination("shortcut+4"));
         miJobHistory.setOnAction(e -> onViewJobHistory());
 
+        // This is a screen, so it belongs with the screens. It previously sat only at the bottom of
+        // the Tools menu under the name "Cleanup", where users looking to delete files did not find
+        // it.
+        MenuItem miDeleteFiles = new MenuItem("Delete Files & Folders…");
+        miDeleteFiles.setAccelerator(javafx.scene.input.KeyCombination.keyCombination("shortcut+5"));
+        miDeleteFiles.setOnAction(e -> onCleanup());
+
         miDarkMode = new CheckMenuItem("Toggle Dark Mode");
         miDarkMode.setAccelerator(javafx.scene.input.KeyCombination.keyCombination("shortcut+D"));
         miDarkMode.setOnAction(e -> onToggleDarkMode());
 
         menu.getItems().addAll(
             miConfiguration, miDashboard, miSummary, miJobHistory,
+            new SeparatorMenuItem(), miDeleteFiles,
             new SeparatorMenuItem(), miDarkMode);
         return menu;
     }
@@ -211,7 +219,7 @@ public class MenuBarController {
         miClearHashCache = new MenuItem("Clear Hash Cache…");
         miClearHashCache.setOnAction(e -> onClearHashCache());
 
-        MenuItem miCleanup = new MenuItem("Cleanup…");
+        MenuItem miCleanup = new MenuItem("Delete Files & Folders…");
         miCleanup.setOnAction(e -> onCleanup());
 
         menu.getItems().addAll(
