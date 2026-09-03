@@ -350,6 +350,21 @@ The Cleanup Tool existed only as uncommitted files in the working tree, so it wa
 and from every release build. It had passing tests and a working screen the whole time. Worth a habit:
 a feature is not delivered until it is committed.
 
+### N8. A hidden progress bar burned a full CPU core — **FIXED**
+`cleanup.fxml` declared `<ProgressBar progress="-1.0"/>` so that it would be indeterminate when
+shown. JavaFX runs the indeterminate animation from the moment the node is constructed and does not
+stop it when the node is set `visible="false"` — only `managed`/`visible` affect layout, not the
+animation timeline. The Delete screen therefore sat at **1.01 cores sustained** while doing nothing at
+all, for as long as it stayed open.
+
+Fixed by declaring `progress="0.0"` and switching to `-1.0` only for the duration of an operation,
+`beginActivity`/`endActivity`. Measured after the fix: **0.003 cores** idle over ten seconds.
+
+Two lessons. First, an idle screen is worth measuring — this was never going to show up in a test.
+Second, my own first measurement of it was wrong: I sampled a CPU *percentage* at one instant and
+reported "~4.6% of a core, not runaway". Sampling the *rate* of `TotalProcessorTime` over an interval
+gave 1.01 cores. For CPU, measure the delta, never the snapshot.
+
 ## Recommended order of work
 
 1. ~~Install Maven and run `mvn verify`~~ — **done.** 187 tests pass.
