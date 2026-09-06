@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.geometry.*?>
+
+<BorderPane xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.mediascanner.ui.IntegrityController"
+            prefWidth="1040" prefHeight="760">
+
+    <top>
+        <VBox styleClass="header-bar">
+            <padding><Insets top="12" right="16" bottom="12" left="16"/></padding>
+            <Label text="Verify Archive" styleClass="app-title"/>
+            <Label styleClass="subtle"
+                   text="Checks every file against the SHA-256 recorded when it was written. Nothing is ever modified."/>
+        </VBox>
+    </top>
+
+    <center>
+        <VBox spacing="12">
+            <padding><Insets top="16" right="24" bottom="12" left="24"/></padding>
+
+            <VBox spacing="6">
+                <Label text="Archive folder" styleClass="section-label"/>
+                <HBox spacing="8">
+                    <TextField fx:id="archiveField" HBox.hgrow="ALWAYS"
+                               promptText="Select the archive to verify..." editable="false"/>
+                    <Button text="Browse..." onAction="#onBrowse"/>
+                </HBox>
+            </VBox>
+
+            <VBox spacing="6">
+                <Label text="How thoroughly" styleClass="section-label"/>
+                <RadioButton fx:id="quickMode" text="Quick — check every file is present and the right size"
+                             selected="true"/>
+                <Label styleClass="subtle" wrapText="true"
+                       text="    Fast. Catches deleted and truncated files. Cannot see a file that was altered without changing its length."/>
+                <RadioButton fx:id="deepMode" text="Deep — re-read and re-hash every file"/>
+                <Label styleClass="subtle" wrapText="true"
+                       text="    Reads the whole archive, so it takes as long as your disk needs. This is the only mode that proves the contents are unchanged."/>
+            </VBox>
+
+            <HBox spacing="12" alignment="CENTER_RIGHT">
+                <Button fx:id="verifyButton" text="Verify Archive" onAction="#onVerify"
+                        disable="true"/>
+            </HBox>
+
+            <!-- Live activity -->
+            <VBox fx:id="activityBox" spacing="4" managed="false" visible="false">
+                <Separator/>
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <ProgressBar fx:id="activityBar" prefWidth="220" progress="0.0"/>
+                    <Label fx:id="activityLabel" text=""/>
+                    <Button fx:id="cancelButton" text="Cancel" onAction="#onCancel"/>
+                </HBox>
+            </VBox>
+
+            <!-- Result -->
+            <VBox fx:id="resultBox" spacing="8" managed="false" visible="false" VBox.vgrow="ALWAYS">
+                <Separator/>
+                <Label fx:id="verdictLabel" wrapText="true" style="-fx-font-size: 15px;"/>
+                <Label fx:id="caveatLabel" styleClass="subtle" wrapText="true"/>
+
+                <GridPane fx:id="statsGrid" hgap="24" vgap="4">
+                    <columnConstraints>
+                        <ColumnConstraints minWidth="220"/>
+                        <ColumnConstraints minWidth="120"/>
+                    </columnConstraints>
+                </GridPane>
+
+                <Label text="Findings" styleClass="section-label"/>
+                <TableView fx:id="findingTable" VBox.vgrow="ALWAYS" prefHeight="230">
+                    <columns>
+                        <TableColumn fx:id="statusColumn" text="Status" prefWidth="150"/>
+                        <TableColumn fx:id="pathColumn" text="File" prefWidth="470"/>
+                        <TableColumn fx:id="detailColumn" text="Detail" prefWidth="330"/>
+                    </columns>
+                </TableView>
+
+                <Label fx:id="reportLabel" styleClass="subtle" wrapText="true"/>
+            </VBox>
+        </VBox>
+    </center>
+
+    <bottom>
+        <Label fx:id="statusLabel" text="Choose an archive folder to begin."
+               style="-fx-padding: 6 16 6 16; -fx-background-color: #f0f0f0;"/>
+    </bottom>
+</BorderPane>

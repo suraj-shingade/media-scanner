@@ -296,10 +296,27 @@ installer always claims 1.0.0. Worth a note in `docs/INSTALL.md`.
 in `pom.xml`, but there is no `003` commit in the log — the profiles arrived inside the 004 commit. The
 tracker should record this so the history is not misleading.
 
-### P5. Tracker is stale
+### P5. Tracker is stale — **rebuilt twice, and that is the finding**
 `.specify/memory/tracker.md` still reports `001-media-scanner-core` as the active feature at ~95%, with
 "No active blockers. Ready to begin `/speckit-specify`." Features 002, 003 and 004 have shipped since.
 Per the constitution's own Tracker Rebuild Trigger this warranted a rebuild; done as part of this pass.
+
+**It went stale again within five sessions** and was rebuilt a second time in Session 10. The second
+drift was worse than the first, because the file was not merely behind — it was *actively wrong* in ways
+a reader would trust:
+
+- It named cosmetic resume as "the largest remaining correctness gap" three sessions after feature 007
+  closed it, and listed M3, M4, M5 and M9 as unfixed when all four were closed in feature 008.
+- It described `UNIQUE(SHA256_HASH)` as load-bearing and instructed the reader not to drop it. `V002`
+  had already dropped it deliberately and replaced it with an atomic claim against `HASH_CANONICAL`.
+  Following the tracker's instruction would have reintroduced the race feature 005 removed.
+- It reported 228 tests and branch `main` against an actual 240 tests on an unmerged branch.
+
+The Rebuild Trigger is time-based (">7 days without update"), which is why it did not fire: the file was
+being *touched* every session while its Context Snapshot rotted. A trigger on elapsed time cannot catch
+a document that is updated at the top and stale in the middle. Worth considering a cheap structural
+check instead — the tracker's claimed test count and branch name are both mechanically verifiable
+against `mvnw` output and `git`, and a mismatch is a reliable staleness signal.
 
 ---
 

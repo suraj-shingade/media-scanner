@@ -12,23 +12,45 @@
 
 ## Project Status
 
-**Phase**: Features 001–008 implemented and merged to main, including the Cleanup Tool.
-**Overall Completion**: ~92% of the full BRD. FR-019, FR-020, FR-023, FR-031 and true resume
-(FR-017/FR-022) are all closed. Feature 006 (Cleanup Tool) is being spec'd in a separate session.
-**Constitution Version**: 1.2.0
+**Phase**: Features 001–008 implemented and merged to `main`. Feature 006 (Cleanup Tool) landed in
+Session 9 and was substantially reworked in Session 10 into **Delete Files & Folders**, which is on an
+unmerged branch. Feature 011 (**Archive Integrity Verification**) built in Session 11, also unmerged.
+The BRD itself is fully mapped — FR-001 to FR-031 all trace to a spec — so 011 onwards is new scope.
+**Overall Completion**: ~94% of the full BRD. FR-019, FR-020, FR-023, FR-031 and true resume
+(FR-017/FR-022) are closed. FR-032–FR-058 (Cleanup) are closed; FR-059–FR-063 (direct delete) are
+implemented but **blocked on B008** — they conflict with Constitution Principle IX.
+**Constitution Version**: 1.2.0 — **amendment decision pending, see B008**
 
 ---
 
 ## Active Feature
 
-| Field | Value |
-|-------|-------|
-| Branch | `main` (feature branch `005-job-reports-history` not cut — work landed directly) |
-| Spec | `specs/005-job-reports-history/spec.md` ✅ |
-| Plan | `specs/005-job-reports-history/plan.md` ✅ |
-| Tasks | `specs/005-job-reports-history/tasks.md` — 46 of 48 done; T035 declined with rationale, T047 (manual acceptance) outstanding |
+**Two branches are open. They are independent — both cut from `main` at `53735cd`, and neither depends
+on the other.**
 
-**Build status**: `./mvnw clean verify` — **228 tests, 0 failures** (148 unit, 80 integration).
+| | `011-archive-integrity` (current) | `010-delete-discoverability` |
+|---|---|---|
+| Spec | `specs/011-archive-integrity/spec.md` ✅ FR-064–FR-076 | `specs/006-cleanup-tool/spec.md` ✅ FR-059–FR-063 |
+| Plan | ✅ with Constitution Check recorded | ⚠️ **not updated** for the direct-delete mode |
+| Tasks | Not cut — single-session feature | Not cut |
+| Status | **Ready to merge** | 🔴 **Blocked on B008** |
+| Pushed | No | No |
+
+**Build status** — branch `011`, `./mvnw -o clean verify` on 2026-09-06: **245 tests, 0 failures**
+(152 unit, 93 integration). Branch `010` measured 240 on 2026-09-05. Windows only; **CI has run
+neither branch**.
+
+> **Counting note.** An earlier reading of 257 on branch `011` was wrong. `target/` still held failsafe
+> reports from branch `010` (`CleanupByExtensionIT`, `CleanupStreamingIT`), and summing report files
+> without `clean` counts tests that were never run in this build. Take totals from a clean build, never
+> from whatever is sitting in `target/`.
+
+**Note on this file**: the Session 10 tracker rebuild (including B008 and the corrected concurrency
+invariants) was cherry-picked from `010` onto `011`, so the corrected `HASH_CANONICAL` invariant reaches
+`main` whichever branch merges first — it was actively dangerous and should not wait on a governance
+decision. Expect a trivial conflict in this file when the second branch merges.
+
+**Outstanding on `010`**: B008, plan.md not updated, no tasks file, G7 Destructive Review not recorded.
 
 ---
 
@@ -99,8 +121,48 @@
 | B005 | Resume was cosmetic — a "resumed" job re-copied everything already transferred | Suraj | 🟢 RESOLVED — feature 007. Verified at 52 552-file scale: a re-run copies zero bytes and the archive does not grow | — |
 | B006 | The 4 `*IT` classes had never run — Surefire without Failsafe, and Surefire defaults do not match `*IT.java` | Suraj | 🟢 RESOLVED — `maven-failsafe-plugin` added; all four passed on first execution | — |
 | B007 | Nobody had driven the GUI or run at scale | Suraj | 🟢 RESOLVED — GUI driven through Job History → Open Summary → charts (two UI defects found and fixed), and a 52 552-file acceptance run completed. **Remaining gaps are narrow**: the export file dialogs and the new resume dialog have not been clicked by hand | — |
+| B008 | **Direct-delete mode violates Constitution Principle IX.** Needs a decision, not a fix | Suraj | 🔴 **OPEN** | Next session |
 
-**No blockers are open.** The narrow remaining gaps are recorded against B007.
+**One blocker is open: B008.** The narrow remaining gaps from B007 (export file dialogs never driven
+by hand) are still open but are not blocking.
+
+### B008 — detail
+
+The direct-delete mode built in Session 10 was requested explicitly and repeatedly by the user
+("when job is going to get start we should ask and then directly delte when found"). It confirms the
+*criteria* before the walk starts, then deletes matches as it finds them in one pass. Principle IX
+requires the opposite, in two rules that are marked non-negotiable:
+
+- *Preview before delete* — "the user MUST be shown the complete set of items a destructive operation
+  would remove — path, size, and the reason each item qualified — before anything is removed.
+  **A destructive operation that cannot enumerate its targets in advance MUST NOT run.**"
+- *Explicit confirmation* — "The confirmation MUST state the exact item count, the total bytes..."
+
+The shipped mode does neither. FR-060 in `specs/006-cleanup-tool/spec.md` records the narrowing, but a
+feature spec cannot override the constitution — § Governance states the constitution "supersedes all
+other project conventions".
+
+**What is not in breach.** The other nine rules of IX all hold and are covered by tests: no default
+destructive scope, media never deletable, contents decide not names, re-verify immediately before
+acting, never escape the selected tree, refuse dangerous roots, continue past individual failures,
+cancellable, durable report. `CleanupStreamingIT.testPhotosSurviveEvenWhenTheirExtensionIsNamed` is the
+protected-media survival test G7 asks for.
+
+**Two ways to resolve — this is the user's call, not the implementer's:**
+
+1. **Amend the constitution to 1.3.0 (MINOR).** Permit a second confirmation shape for operations that
+   cannot enumerate in advance, conditional on compensating controls: criteria stated in full, live
+   progress, cancellable mid-run, per-file content re-check, durable report. Requires, per § Governance:
+   a PR bumping the version, an updated Sync Impact Report, dependent templates verified, and a tracker
+   entry recording the rationale. This keeps the behaviour the user asked for.
+2. **Revert the direct mode**, keeping the discoverability rename, the extension selection and the
+   activity indicators, and require the review-first flow for every deletion. This keeps the
+   constitution intact and loses the feature.
+
+Option 1 is the better engineering answer — the compensating controls are real and the enumerate-first
+rule was written before a streaming mode existed — but amending a governance document is not a decision
+to take unilaterally, and G7 exists precisely so this is not waved through. **Do not merge
+`010-delete-discoverability` to `main` until B008 is resolved.**
 
 ---
 
@@ -200,73 +262,152 @@ the scale Principle I mandates. Anything touching `ScanEngine` or `Database` mus
 - **The scan must survive an unreadable directory.** `FileScanner.walkFileTree` uses a lazy recursive
   walk that logs and skips them. Do not revert to `Files.walk` — it throws `UncheckedIOException`
   mid-stream and aborts a multi-hour job on the first permission-denied folder.
-- **`UNIQUE(SHA256_HASH)` is currently load-bearing.** It is what serialises the check-then-act duplicate
-  decision in `processFile` and makes it accidentally correct. Feature 005 replaces it with an explicit
-  atomic claim against `HASH_CANONICAL`; until then, do not drop the constraint.
+- **The duplicate claim is now explicit, not accidental.** *(Updated Session 10 — the previous entry
+  described a constraint the schema no longer has.)* `UNIQUE(SHA256_HASH)` on `FILE_HASH_INDEX` used to
+  serialise the check-then-act in `processFile` by luck. Feature 005 dropped it in `V002` — deliberately,
+  so a duplicate path can cache its own hash — and replaced it with `HashIndexDao.claimCanonical()`:
+  an `INSERT OR IGNORE INTO HASH_CANONICAL` whose primary key does the serialisation. The winner of the
+  insert owns the canonical copy. **Do not reintroduce a read-then-write duplicate check**; call
+  `claimCanonical` and branch on whether the claim succeeded.
+
+- **The Cleanup engine is deliberately isolated.** `CleanupEngine` runs no worker pool, takes no SQLite
+  connection, and shares nothing with `ScanEngine`. This is blast-radius control, not an oversight — a
+  bug in the concurrent transfer pipeline must have no route to a deletion. Do not "simplify" by giving
+  it the engine's thread pool or a database handle.
 
 ### Known-wrong things not yet fixed (see `docs/ENGINEERING-AUDIT.md`)
 
-- Resume is cosmetic (H5, blocker B005) — the largest remaining correctness gap
-- FR-019, FR-020, FR-023 reports and FR-031 history are unbuilt → feature 005
-- `Tika.detect` cannot see a truncated JPEG, so FR-012 corrupt detection is weaker than specified (M3)
-- `ResourceMonitor` disk read/write MB/sec are hardcoded 0.0 (M4); `activeThreads` counts the whole JVM (M5)
-- `JobStatistics` is written under a lock and read without one, so checkpoints can be internally
-  inconsistent across fields (M9)
+*Rewritten Session 10. Every item on the previous list had been fixed and the list had not been updated —
+it named resume as the largest open gap three sessions after feature 007 closed it. Verified against the
+audit and the code on 2026-09-05.*
+
+**Closed since the list was last accurate**: H5 / B005 resume (feature 007); FR-019, FR-020, FR-023,
+FR-031 reports and history (feature 005); M3 truncated-media detection, M4 disk I/O rates, M5
+`activeThreads`, M9 `JobStatistics` consistency (all feature 008); N8 idle-CPU spin (Session 10).
+
+**Genuinely still open:**
+
+- **B008** — direct-delete conflicts with Principle IX. Decision pending; blocks the merge.
+- **P3** — `pom.xml` version hardcoded to `1.0.0`, so every build claims to be the same release.
+- **P4** — feature 003 (installable builds) has no implementation commit; the work exists but is not
+  attributable to a change.
+- **B007 remainder** — the export file dialogs are the one UI path never driven by hand. Everything else
+  in the GUI has now been exercised.
+- **Session 10 process debt** — `specs/006-cleanup-tool/plan.md` was not updated for the direct-delete
+  mode, no tasks file was cut, and no G7 Destructive Review is recorded for that path. All three are
+  required by the constitution before this branch merges.
+
+### Considered and not adopted
+
+- **Native rebuild (Rust core + per-platform shells)** — proposed 2026-09-05, not scheduled. The finding
+  worth keeping: the case for it is *access*, not speed. Copy-on-write clones (`clonefile(2)`, `FICLONE`,
+  ReFS block cloning), volume change journals, native trash and NPU inference are unreachable from the
+  JVM and are where the order-of-magnitude wins are. Rust itself buys ~2–4× on classification and
+  ~8–10× on memory, and **nothing** on bandwidth-bound hashing and copying. Also recorded: the Delete
+  module competes directly with czkawka and fclones, both free, both Rust, both faster — the
+  differentiator is verified transfer with proof, not cleanup.
 
 ---
 
 ## Session Log
 
-### 2026-09-01 — Session 4 (Audit + Feature 005 specification, tracker rebuild)
+### 2026-09-06 — Session 11 (Feature 011: Archive Integrity Verification)
 
-**Rebuild rationale**: The tracker still named `001-media-scanner-core` as the active feature at ~95%
-with "No active blockers. Ready to begin `/speckit-specify`", while features 002, 003 and 004 had all
-shipped. Stale by the constitution's own Tracker Rebuild Trigger (session log > 7 days, blockers
-unreviewed). Rebuilt per Constitution § Tracker Rebuild Trigger.
+**Cut from `main`, not from `010`.** `010` is blocked on B008, and a feature branched off it would
+inherit that blocker and be unable to merge either.
 
-**Work done**:
-- Full engineering audit of all 36 main sources against Constitution v1.1.0 → `docs/ENGINEERING-AUDIT.md`.
-  25 findings: 4 critical, 7 high, 9 medium, 5 process.
-- Fixed 11 findings. The four critical ones all concerned concurrency at the scale Principle I mandates:
-  - **C1** one JDBC connection shared by every worker thread → per-thread connections via `ThreadLocal`,
-    `busy_timeout = 30000`, worker threads release their connection as they die
-  - **C2** unbounded task submission plus a retained `Future` per file → bounded `ArrayBlockingQueue`
-    (64/thread) with `CallerRunsPolicy` for backpressure; no `Future`s retained
-  - **C3** plain `HashMap` caches written by all workers → concurrent set; `metadataCache` deleted (keyed
-    by absolute path, so its hit rate was structurally zero while it grew one entry per file)
-  - **C4** first unreadable directory aborted the whole scan → fault-tolerant lazy walk
-  - Plus: ETA was always zero (`setFilesTotal` never called); Move mode did a full copy+delete even on
-    the same volume; a 64 KB partial hash was computed and discarded for every file
-  - **H8** the four `*IT` classes had never been executed by any build — `pom.xml` configures Surefire
-    but not Failsafe, and Surefire's default includes do not match `*IT.java`. Those four are the only
-    coverage of the DB layer, the resume path and the end-to-end pipeline, so the suite reported green
-    while its most load-bearing tests were silently skipped. Added `maven-failsafe-plugin`.
-  - **P2** added `.github/workflows/build.yml` — `mvn verify` on every branch push and PR across all
-    three target platforms, with xvfb on Linux
-- Specified feature 005 (Job Reports & History) in full: spec, plan, research, data-model, quickstart,
-  checklist, 48 tasks.
+**Why this module.** The BRD is fully mapped — every one of FR-001 to FR-031 traces to a spec — so this
+is new scope. It was chosen from the competitive read recorded under *Considered and not adopted*: the
+open ground is "move it safely, file it correctly, and prove afterwards what happened". The product could
+prove what happened *at transfer time* and had no answer to "is my archive still intact six months
+later". Verified-offload tools check once at ingest and never again; the photo DAMs do not check at all.
 
-**Decisions made**:
-- Feature 005 records per-file outcomes to SQLite and derives the JSON reports at terminal state, rather
-  than appending per-file. The existing `FileTransfer.appendFailureRecord` rewrites the entire JSON array
-  per failure (O(n²)) and is not thread-safe — it is deleted, not wired up.
-- `FILE_HASH_INDEX` is split in V002: `HASH_CANONICAL` takes the `UNIQUE(SHA256_HASH)` dedup gate so it
-  stays atomic, while the index becomes a pure per-path cache. Today the single constraint serves both
-  purposes and they conflict, so duplicate paths never cache and are re-read on every run.
-- `SkippedRecord`, `FailureRecord` and `appendFailureRecord` are all dead code today and are replaced by
-  one `JobEvent` type rather than carried forward.
-- True resume (audit H5) is deliberately **not** folded into 005 — it is a separate correctness feature.
+**No migration needed**, which is why the feature is small. `HASH_CANONICAL` already stores the
+transfer-time SHA-256 (`V002`) and the destination path and size (`V003`). Verification is that table read
+back against the disk.
 
-**Verification**: Maven is still not installed (B003) and the local `~/.m2` cache belongs to a different
-project. Worked around it: full `javac` type-check of all 30 non-UI classes against source stubs for the
-four missing third-party APIs (clean), a real JUnit run of the 6 test classes with satisfiable
-dependencies (**59 tests, 59 passed**), and targeted verification of the two new behaviours no existing
-test covers — atomic-move fast path and unreadable-directory tolerance with a real `icacls` DENY ACE
-(8 checks, all passed). **The 13 tests needing sqlite-jdbc or Tika at runtime were not run.**
+**The decision that matters** — `IntegrityEngine` deliberately does **not** use `HashEngine`. That class
+is cache-aware: it returns the stored digest when size and mtime are unchanged, then writes its result
+back. Both halves defeat verification. A cache hit returns the transfer-time value — the number under
+test — and would report every file intact having read nothing; the write-back would destroy the evidence
+for the next run. `IntegrityEngine.sha256Of` computes its own digest and does nothing else. Written into
+the spec as FR-067 rather than left as an implementation habit, precisely because reusing the existing
+hasher is the obvious move and is wrong.
 
-**Next action**: see Session 6 below.
+**Scale**: intact files are counted, not retained (FR-073). A clean 10M-file archive would otherwise
+produce 10M in-memory findings and exhaust the heap on exactly the archives Principle I exists for.
 
----
+**Honesty about limits**: quick mode cannot see a file altered in place without changing its length, so
+the mode is recorded on the run, shown on screen, and written into the report next to a sentence saying
+what it could not check. A cancelled run is never reported as clean, whatever it found — a partial pass
+presented as proof would be the most damaging thing this feature could do.
+
+**Shipped**: `IntegrityStatus`, `IntegrityFinding`, `IntegrityRun`, `IntegrityEngine`,
+`IntegrityReportWriter`, `HashIndexDao.forEachTransferred` (streams to a consumer rather than returning a
+list), `integrity.fxml`, `IntegrityController`, and `View → Verify Archive…` on `shortcut+6` — 6 rather
+than 5 so it cannot collide with Delete on branch `010`. **17 tests added; 245 pass on a clean build.**
+
+**Two bugs caught before they ran**: `forEachTransferred` first called `rs.wasNull()` inside a constructor
+argument list, where left-to-right evaluation meant it reported on `CANONICAL_PATH` instead of
+`DESTINATION_SIZE`. And the new screen's progress bar was given `progress="0.0"` in the FXML from the
+start rather than `-1.0` — applying N8 rather than repeating it.
+
+**Next action**: B008 still blocks `010` and is unanswered. `011` is independent and ready. Neither
+branch is pushed and CI has run neither.
+
+### 2026-09-03 → 09-05 — Session 10 (Delete Files & Folders rework, N8, tracker rebuild)
+
+**Driven entirely by user feedback, in three rounds.** Worth recording because each round found a
+failure the tests could not have.
+
+1. *"i cannot see delete file module option we requested"* — feature 006 was complete, tested and
+   invisible: it had never been committed (recorded as N7 in Session 9).
+2. *"i cannot find delete file/folders feature requested"* — still not found after it shipped. The menu
+   item said "Cleanup…" and sat under Tools. Renamed to **"Delete Files & Folders…"**, moved to the View
+   menu, given `shortcut+5`. A feature named after its implementation is a feature nobody finds.
+3. *"no option to add file formats, empty folders, mime types nothing… we don't need to analyse"* —
+   the review-first flow was the only flow. Built the direct mode alongside it.
+4. *"activity indicators with messages is not visible so user do not know what is happening"* — added
+   the live activity row.
+5. *"wait for user to confirm… when job is going to get start we should ask and then directly delte when
+   found. and at last show the nice stats"* — moved confirmation ahead of the walk and made deletion
+   streaming. **This is what created B008.**
+
+**Engine** — `CleanupEngine.delete(run, groups, extensions)` overload plus `extensionOf()` and
+`normaliseExtension()` (accepts `jpg`, `.jpg`, `*.jpg`, `JPG`); new `deleteWhileScanning()` returning
+`StreamingResult`, reporting a `DeleteProgress` record per file. Selection by extension is strictly
+additive and cannot widen what is deletable — `deleteOne` still re-classifies by content immediately
+before removal.
+
+**UI** — `cleanup.fxml` rebuilt around a `TabPane`: "Choose what to delete" (group checkboxes, extension
+list, empty-folders) and "Review first" (the original analyse flow, unchanged). `CleanupController`
+rewritten: confirm-before-start, streaming delete with progress throttled to every 20th file, and an
+end-of-run stats grid (examined, deleted, freed, pruned, skipped, failed, elapsed, per-group breakdown).
+
+**N8 — a hidden progress bar burned a full CPU core.** `<ProgressBar progress="-1.0"/>` in the FXML:
+JavaFX runs the indeterminate animation from construction and does not stop it when the node is
+`visible="false"`. The Delete screen sat at **1.01 cores** doing nothing. Now declared `0.0` and made
+indeterminate only for the duration of an operation; measured **0.003 cores** idle afterwards.
+Secondary lesson, recorded in the audit: my first measurement of this was wrong because I sampled a CPU
+*percentage* at one instant and reported "4.6% of a core, not runaway". For CPU, measure the delta of
+`TotalProcessorTime` over an interval, never the snapshot.
+
+**Tests** — `CleanupByExtensionIT` (6) and `CleanupStreamingIT` (6) added. **240 total, 0 failures**
+(148 unit, 92 integration). The load-bearing case in both is that naming a media extension deletes
+nothing.
+
+**Also**: `specs/006-cleanup-tool/spec.md` extended with FR-059–FR-063; README screens table corrected;
+audit gained N8; a native-rebuild architecture proposal was produced and recorded above under
+*Considered and not adopted*.
+
+**Tracker rebuild.** This file had drifted badly: it claimed 228 tests (240), branch `main`
+(`010-delete-discoverability`), feature 006 "being spec'd in a separate session" (landed in Session 9),
+a load-bearing `UNIQUE(SHA256_HASH)` constraint (dropped in V002 and replaced), and a known-wrong list
+on which every item was already fixed. All corrected against the code rather than against memory.
+
+**Next action**: resolve **B008** — amend the constitution to 1.3.0 or revert the direct-delete mode.
+Nothing else on this branch should merge first. After that: update `plan.md`, record the G7 Destructive
+Review, push, and let CI run the branch on all three platforms.
 
 ### 2026-09-02 — Session 9 (Cleanup Tool landed, branding, job-id fix, CI diagnosability)
 
@@ -481,6 +622,57 @@ executed (**B004**). UI coverage is `FXMLLoader`-level: all 7 screens load, whic
    50 000+ files (**B007**, task T047)
 4. Cut feature **007** for true resume (**B005**) — the largest remaining correctness gap
 5. Then the open audit findings: M3 (corrupt-media detection), M4/M5 (resource monitoring), M9 (stats race)
+
+---
+
+### 2026-09-01 — Session 4 (Audit + Feature 005 specification, tracker rebuild)
+
+**Rebuild rationale**: The tracker still named `001-media-scanner-core` as the active feature at ~95%
+with "No active blockers. Ready to begin `/speckit-specify`", while features 002, 003 and 004 had all
+shipped. Stale by the constitution's own Tracker Rebuild Trigger (session log > 7 days, blockers
+unreviewed). Rebuilt per Constitution § Tracker Rebuild Trigger.
+
+**Work done**:
+- Full engineering audit of all 36 main sources against Constitution v1.1.0 → `docs/ENGINEERING-AUDIT.md`.
+  25 findings: 4 critical, 7 high, 9 medium, 5 process.
+- Fixed 11 findings. The four critical ones all concerned concurrency at the scale Principle I mandates:
+  - **C1** one JDBC connection shared by every worker thread → per-thread connections via `ThreadLocal`,
+    `busy_timeout = 30000`, worker threads release their connection as they die
+  - **C2** unbounded task submission plus a retained `Future` per file → bounded `ArrayBlockingQueue`
+    (64/thread) with `CallerRunsPolicy` for backpressure; no `Future`s retained
+  - **C3** plain `HashMap` caches written by all workers → concurrent set; `metadataCache` deleted (keyed
+    by absolute path, so its hit rate was structurally zero while it grew one entry per file)
+  - **C4** first unreadable directory aborted the whole scan → fault-tolerant lazy walk
+  - Plus: ETA was always zero (`setFilesTotal` never called); Move mode did a full copy+delete even on
+    the same volume; a 64 KB partial hash was computed and discarded for every file
+  - **H8** the four `*IT` classes had never been executed by any build — `pom.xml` configures Surefire
+    but not Failsafe, and Surefire's default includes do not match `*IT.java`. Those four are the only
+    coverage of the DB layer, the resume path and the end-to-end pipeline, so the suite reported green
+    while its most load-bearing tests were silently skipped. Added `maven-failsafe-plugin`.
+  - **P2** added `.github/workflows/build.yml` — `mvn verify` on every branch push and PR across all
+    three target platforms, with xvfb on Linux
+- Specified feature 005 (Job Reports & History) in full: spec, plan, research, data-model, quickstart,
+  checklist, 48 tasks.
+
+**Decisions made**:
+- Feature 005 records per-file outcomes to SQLite and derives the JSON reports at terminal state, rather
+  than appending per-file. The existing `FileTransfer.appendFailureRecord` rewrites the entire JSON array
+  per failure (O(n²)) and is not thread-safe — it is deleted, not wired up.
+- `FILE_HASH_INDEX` is split in V002: `HASH_CANONICAL` takes the `UNIQUE(SHA256_HASH)` dedup gate so it
+  stays atomic, while the index becomes a pure per-path cache. Today the single constraint serves both
+  purposes and they conflict, so duplicate paths never cache and are re-read on every run.
+- `SkippedRecord`, `FailureRecord` and `appendFailureRecord` are all dead code today and are replaced by
+  one `JobEvent` type rather than carried forward.
+- True resume (audit H5) is deliberately **not** folded into 005 — it is a separate correctness feature.
+
+**Verification**: Maven is still not installed (B003) and the local `~/.m2` cache belongs to a different
+project. Worked around it: full `javac` type-check of all 30 non-UI classes against source stubs for the
+four missing third-party APIs (clean), a real JUnit run of the 6 test classes with satisfiable
+dependencies (**59 tests, 59 passed**), and targeted verification of the two new behaviours no existing
+test covers — atomic-move fast path and unreadable-directory tolerance with a real `icacls` DENY ACE
+(8 checks, all passed). **The 13 tests needing sqlite-jdbc or Tika at runtime were not run.**
+
+**Next action**: see Session 6 below.
 
 ---
 

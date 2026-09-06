@@ -121,4 +121,9 @@ class FxmlLoadIT {
     void testShortcutsLoads() throws Exception {
         assertLoads("/fxml/shortcuts.fxml");
     }
+
+    @Test
+    void testVerifyArchiveLoads() throws Exception {
+        assertLoads("/fxml/integrity.fxml");
+    }
 }

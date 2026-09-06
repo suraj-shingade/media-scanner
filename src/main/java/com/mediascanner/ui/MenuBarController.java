@@ -189,12 +189,18 @@ public class MenuBarController {
         miJobHistory.setAccelerator(javafx.scene.input.KeyCombination.keyCombination("shortcut+4"));
         miJobHistory.setOnAction(e -> onViewJobHistory());
 
+        // shortcut+5 is reserved for Delete Files & Folders on branch 010, so this takes 6 rather
+        // than colliding with it. Named for what it does, per the lesson recorded as N7/N8.
+        MenuItem miVerifyArchive = new MenuItem("Verify Archive…");
+        miVerifyArchive.setAccelerator(javafx.scene.input.KeyCombination.keyCombination("shortcut+6"));
+        miVerifyArchive.setOnAction(e -> onVerifyArchive());
+
         miDarkMode = new CheckMenuItem("Toggle Dark Mode");
         miDarkMode.setAccelerator(javafx.scene.input.KeyCombination.keyCombination("shortcut+D"));
         miDarkMode.setOnAction(e -> onToggleDarkMode());
 
         menu.getItems().addAll(
-            miConfiguration, miDashboard, miSummary, miJobHistory,
+            miConfiguration, miDashboard, miSummary, miJobHistory, miVerifyArchive,
             new SeparatorMenuItem(), miDarkMode);
         return menu;
     }
@@ -439,6 +445,11 @@ public class MenuBarController {
     /** Opens the Cleanup screen (feature 006). Destructive work lives on its own screen. */
     public void onCleanup() {
         screenNavigator.navigateTo(ScreenType.CLEANUP);
+    }
+
+    /** Opens the Verify Archive screen (feature 011). Read-only: it can change nothing. */
+    public void onVerifyArchive() {
+        screenNavigator.navigateTo(ScreenType.ARCHIVE_INTEGRITY);
     }
 
     public void onToggleDarkMode() {

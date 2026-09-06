@@ -182,6 +182,43 @@ public class HashIndexDao {
     /** A completed transfer: where it landed and how big it was. */
     public record TransferredCopy(String path, long size) {}
 
+    /**
+     * Every canonical row, whether or not a destination was ever recorded (feature 011, FR-064).
+     *
+     * <p>Rows with a null destination are returned rather than filtered out, so the caller can count
+     * them as {@code UNVERIFIABLE} instead of silently shrinking the denominator. A verification that
+     * quietly skipped records it could not check would overstate how much of the archive it proved.
+     *
+     * <p>Streamed to a consumer rather than returned as a list: an archive at the scale Principle I
+     * mandates has 10M of these, and materialising them costs heap for no benefit — the caller
+     * processes each one and keeps only the findings.
+     */
+    public int forEachTransferred(java.util.function.Consumer<CanonicalEntry> consumer)
+            throws SQLException {
+        String sql = "SELECT SHA256_HASH, CANONICAL_PATH, DESTINATION_PATH, DESTINATION_SIZE"
+                   + " FROM HASH_CANONICAL ORDER BY DESTINATION_PATH";
+        int seen = 0;
+        try (PreparedStatement ps = database.getConnection().prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                String hash = rs.getString("SHA256_HASH");
+                String canonical = rs.getString("CANONICAL_PATH");
+                String destination = rs.getString("DESTINATION_PATH");
+                // wasNull() reports on the most recent column read, so it must be consulted
+                // immediately after getLong and before any further getter runs.
+                long size = rs.getLong("DESTINATION_SIZE");
+                if (rs.wasNull()) size = 0L;
+                consumer.accept(new CanonicalEntry(hash, canonical, destination, size));
+                seen++;
+            }
+        }
+        return seen;
+    }
+
+    /** One canonical content record. {@code destinationPath} is null for pre-V003 rows. */
+    public record CanonicalEntry(String sha256Hash, String canonicalPath,
+                                 String destinationPath, long destinationSize) {}
+
     private FileHashRecord mapRow(ResultSet rs) throws SQLException {
         FileHashRecord r = new FileHashRecord();
         r.setId(rs.getLong("ID"));

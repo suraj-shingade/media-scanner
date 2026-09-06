@@ -35,6 +35,22 @@ default, never moving unless you choose to.
 | **Summary** | The full end-of-job record, exportable as JSON, CSV or a self-contained HTML page |
 | **Job History** | Every job ever run, browsable after restart, with its stored throughput chart |
 | **Cleanup** | Permanently delete non-media files by detected type, behind a preview-and-confirm gate |
+| **Verify Archive** | Re-check every archived file against the SHA-256 recorded when it was written. `View > Verify Archive` (Ctrl+6) |
+
+### Verifying an archive
+
+A transfer report proves what happened during a job. It cannot tell you whether the archive is still
+correct a year later — bit rot is silent, a truncated file still looks like a file, and something that
+re-encoded a photo in place leaves no trace in any log.
+
+Verify Archive answers that question from the hashes already stored at transfer time:
+
+- **Quick** — every file present, every size right. Seconds on a large archive. Blind to content change.
+- **Deep** — every file re-read and re-hashed. The only mode that detects silent corruption.
+
+The mode is recorded in the result and in the report, because a quick pass that found nothing is not
+proof of integrity. Files with no transfer record are listed as untracked rather than counted as
+failures, and a cancelled run is never reported as clean. Verification never modifies the archive.
 
 ## Reports
 
