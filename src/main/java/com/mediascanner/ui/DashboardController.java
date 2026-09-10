@@ -73,9 +73,6 @@ public class DashboardController implements Initializable {
     private Timeline refreshTimeline;
     private ThroughputChart chart;
 
-    /** Points kept when showing only the recent tail. 10 minutes at 1 Hz. */
-    private static final int RECENT_CHART_POINTS = 600;
-
     /** Spans the whole run is divided into. At most twice this many points are plotted. */
     private static final int WHOLE_RUN_BUCKETS = 400;
 
@@ -95,7 +92,6 @@ public class DashboardController implements Initializable {
      */
     private final List<ThroughputSample> liveSamples = new ArrayList<>();
 
-    private ToggleButton wholeRunToggle;
     private Label sampleCountLabel;
 
     /**
@@ -209,20 +205,52 @@ public class DashboardController implements Initializable {
 
     // ----------------------------------------------------------------- charting
 
-    /** The Whole run / Last 10 minutes switch, plus how much history is being held. */
+    /**
+     * How much of the run to draw. Defaults to a rolling window, like Task Manager.
+     *
+     * <p>Whole run is kept because losing the history of a long job was a real defect, but it is not
+     * the default: at four hours it compresses the trace so far that current activity is unreadable,
+     * which is the opposite of what a live dashboard is for.
+     */
+    private enum ChartWindow {
+        LAST_1_MIN("Last 1 minute", 60),
+        LAST_3_MIN("Last 3 minutes", 180),
+        LAST_10_MIN("Last 10 minutes", 600),
+        WHOLE_RUN("Whole run", -1);
+
+        private final String label;
+        private final int seconds;
+
+        ChartWindow(String label, int seconds) {
+            this.label = label;
+            this.seconds = seconds;
+        }
+
+        boolean isWholeRun() { return seconds < 0; }
+
+        @Override
+        public String toString() { return label; }
+    }
+
+    private ChoiceBox<ChartWindow> windowChoice;
+
+    /** The window picker, plus how much history is being held behind it. */
     private javafx.scene.Node buildChartControls() {
-        wholeRunToggle = new ToggleButton("Whole run");
-        wholeRunToggle.setSelected(true);
-        wholeRunToggle.setTooltip(new Tooltip(
-            "Whole run shows every sample since the job started, reduced to an envelope so stalls "
-          + "and bursts stay visible. Switch off to follow only the last 10 minutes."));
-        // Switching view must repaint now rather than at the next tick, or the button feels dead.
-        wholeRunToggle.setOnAction(e -> renderChart(true));
+        windowChoice = new ChoiceBox<>();
+        windowChoice.getItems().addAll(ChartWindow.values());
+        windowChoice.setValue(ChartWindow.LAST_3_MIN);
+        windowChoice.setTooltip(new Tooltip(
+            "How much of the run to draw. The rolling windows keep the horizontal scale fixed and "
+          + "scroll, so current activity stays readable however long the job runs. Whole run shows "
+          + "everything since the start, reduced to an envelope so stalls stay visible.\n\n"
+          + "Every sample is kept and saved either way — this only changes what is drawn."));
+        // Switching must repaint now rather than at the next tick, or the control feels dead.
+        windowChoice.setOnAction(e -> renderChart(true));
 
         sampleCountLabel = new Label("0 samples");
         sampleCountLabel.getStyleClass().add("subtle");
 
-        HBox controls = new HBox(10, wholeRunToggle, sampleCountLabel);
+        HBox controls = new HBox(10, windowChoice, sampleCountLabel);
         controls.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         return controls;
     }
@@ -249,8 +277,12 @@ public class DashboardController implements Initializable {
     private void renderChart(boolean force) {
         if (chart == null || liveSamples.isEmpty()) return;
 
-        boolean wholeRun = wholeRunToggle == null || wholeRunToggle.isSelected();
-        if (wholeRun) {
+        ChartWindow window = windowChoice == null ? ChartWindow.LAST_3_MIN : windowChoice.getValue();
+        if (window == null) window = ChartWindow.LAST_3_MIN;
+
+        if (window.isWholeRun()) {
+            // Rebuilding every point is the expensive path, so it is throttled. The rolling windows
+            // below are bounded and cheap, and are redrawn every tick so the scroll looks smooth.
             long elapsed = liveSamples.get(liveSamples.size() - 1).getElapsedSeconds();
             if (force || elapsed % WHOLE_RUN_REDRAW_EVERY_SECONDS == 0) {
                 chart.setWholeRun(liveSamples, WHOLE_RUN_BUCKETS);
@@ -258,15 +290,7 @@ public class DashboardController implements Initializable {
             return;
         }
 
-        // Tail view: cheaper to append than to rebuild, so keep the incremental path.
-        ThroughputSample latest = liveSamples.get(liveSamples.size() - 1);
-        if (force) {
-            int from = Math.max(0, liveSamples.size() - RECENT_CHART_POINTS);
-            chart.setWholeRun(liveSamples.subList(from, liveSamples.size()), RECENT_CHART_POINTS);
-        } else {
-            chart.appendSample(latest.getElapsedSeconds(), latest.getFilesPerSec(),
-                latest.getMbPerSec(), RECENT_CHART_POINTS);
-        }
+        chart.showWindow(liveSamples, window.seconds);
     }
 
     private static String formatElapsed(long seconds) {

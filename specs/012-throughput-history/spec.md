@@ -77,17 +77,34 @@ the reduced series still contains a zero value and still contains the healthy ra
 
 ---
 
-### User Story 2 — Follow the Recent Tail (Priority: P2)
+### User Story 2 — Watch Current Activity, Task Manager Style (Priority: P1)
 
-Watching a job in progress, the user wants the last ten minutes at full resolution rather than the whole
-run compressed. A toggle switches between the two, and switching repaints immediately.
+**This is the default view, and the priority was corrected after the first implementation.** The initial
+build made whole-run the default, and the response was immediate: *"i can still see throuput chart show
+everything since beginning. it's large size. we need something like windows task manager. it shows latest
+progress."*
+
+The original report — *"we show realtime and then i think last 2-3 mins of data"* — was describing the
+wanted behaviour, not the defect. It was read as a complaint about losing history, and the genuine
+data-loss bugs found alongside it (US1, US3) reinforced that misreading. Both fixes were right; making
+whole-run the default was not.
+
+What a live dashboard needs is a **fixed-width window that scrolls**. The horizontal scale stays
+constant, new samples enter at the right, old ones leave at the left. A spike is the same width an hour
+in as it was in the first minute, so the eye can compare them. A view that keeps stretching to fit the
+whole job compresses current activity until it is unreadable — which is exactly what "it's large size"
+describes.
 
 **Acceptance Scenarios**:
 
-1. **Given** whole-run view, **When** the user turns the toggle off, **Then** the chart shows only the
-   recent window and repaints at once.
-2. **Given** either view, **When** samples continue to arrive, **Then** the retained history is
-   unaffected — the toggle changes what is drawn, never what is kept.
+1. **Given** a running job, **When** the user opens the dashboard, **Then** the chart defaults to a
+   rolling window, not the whole run.
+2. **Given** a job running longer than the window, **When** samples arrive, **Then** the x-axis span
+   stays constant and slides — it MUST NOT stretch to fit.
+3. **Given** a job shorter than the window, **When** the chart draws, **Then** the axis is held at full
+   window width rather than growing, so the trace does not appear to speed up as it fills.
+4. **Given** any window, **When** the user changes it, **Then** the chart repaints immediately and the
+   retained history is unaffected — the control changes what is drawn, never what is kept or saved.
 
 ---
 
@@ -118,6 +135,11 @@ they left it, with the running job's chart intact.
 - **FR-081**: Elapsed time on the chart MUST come from a wall clock, not a count of UI refreshes.
 - **FR-082**: The user MUST be able to switch between the whole run and the recent window, and the
   switch MUST repaint immediately.
+- **FR-086**: The default view MUST be a rolling window whose x-axis is a **fixed width that scrolls**,
+  not an axis that auto-ranges over the data it holds. Before a full window has elapsed the axis MUST be
+  held at full width rather than growing.
+- **FR-087**: Whole run MUST remain available as an explicit choice. It is the right view for reviewing
+  a finished job and the wrong one for watching a live job.
 - **FR-083**: Navigating to the dashboard while a job is running MUST return the running dashboard, not
   a new one. Only starting a job MUST reset the chart.
 - **FR-084**: A discarded dashboard MUST stop its refresh timeline and resource monitor.
