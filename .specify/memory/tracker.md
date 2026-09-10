@@ -14,7 +14,8 @@
 
 **Phase**: Features 001–008 implemented and merged to `main`. Feature 006 (Cleanup Tool) landed in
 Session 9 and was substantially reworked in Session 10 into **Delete Files & Folders**, which is on an
-unmerged branch.
+unmerged branch. Feature 011 (**Archive Integrity Verification**) built in Session 11, also unmerged.
+The BRD itself is fully mapped — FR-001 to FR-031 all trace to a spec — so 011 onwards is new scope.
 **Overall Completion**: ~94% of the full BRD. FR-019, FR-020, FR-023, FR-031 and true resume
 (FR-017/FR-022) are closed. FR-032–FR-058 (Cleanup) are closed; FR-059–FR-063 (direct delete) are
 implemented but **blocked on B008** — they conflict with Constitution Principle IX.
@@ -24,18 +25,32 @@ implemented but **blocked on B008** — they conflict with Constitution Principl
 
 ## Active Feature
 
-| Field | Value |
-|-------|-------|
-| Branch | `010-delete-discoverability` — **2 commits, not pushed, not merged** (`71e1175`, `f89e8da`) |
-| Spec | `specs/006-cleanup-tool/spec.md` ✅ — extended in Session 10 with FR-059–FR-063 |
-| Plan | `specs/006-cleanup-tool/plan.md` ✅ — **not yet updated for the direct-delete mode** |
-| Tasks | No tasks file cut for the Session 10 rework; it was driven directly from user feedback |
+**All three feature branches are merged to `main`** (Session 13, on explicit instruction).
 
-**Build status**: `./mvnw -o verify` — **240 tests, 0 failures** (148 unit, 92 integration across 16 IT
-classes). Verified 2026-09-05 on Windows only; CI has not run this branch.
+| Feature | Branch | Spec | Status on `main` |
+|---|---|---|---|
+| Delete Files & Folders | `010-delete-discoverability` | `specs/006-cleanup-tool/spec.md` FR-059–FR-063 | ⚠️ merged **with B008 open** |
+| Archive Integrity | `011-archive-integrity` | `specs/011-archive-integrity/spec.md` FR-064–FR-076 | ✅ merged |
+| Throughput history | `012-throughput-history` | `specs/012-throughput-history/spec.md` FR-077–FR-087 | ✅ merged |
 
-**Outstanding on this branch**: B008 (constitution conflict), plan.md not updated, no tasks file, G7
-Destructive Review not recorded for the direct-delete path, branch unpushed.
+> ### ⚠️ `main` currently breaches Constitution Principle IX
+>
+> **B008 was never resolved.** It was merged anyway on explicit instruction. The direct-delete mode
+> confirms *criteria* rather than an enumerated file count, and Principle IX states that "a destructive
+> operation that cannot enumerate its targets in advance MUST NOT run". The other nine rules of IX hold
+> and are covered by tests.
+>
+> This is not a code defect to fix — it is a governance decision still outstanding. Either amend the
+> constitution to 1.3.0 (§ Governance requires a PR, a version bump and a Sync Impact Report), or revert
+> the direct-delete mode. Until one of those happens, the constitution and the shipped code disagree,
+> and the constitution is the document that claims to supersede.
+
+**Still outstanding on the delete work**: `specs/006-cleanup-tool/plan.md` was never updated for the
+direct-delete mode, no tasks file was cut, and no G7 Destructive Review is recorded for that path.
+
+> **Counting note.** An earlier reading of 257 tests on branch `011` was wrong. `target/` still held
+> failsafe reports from branch `010`, and summing report files without `clean` counts tests that were
+> never run in this build. Take totals from a clean build, never from whatever is sitting in `target/`.
 
 ---
 
@@ -295,6 +310,50 @@ FR-031 reports and history (feature 005); M3 truncated-media detection, M4 disk 
 ---
 
 ## Session Log
+
+### 2026-09-06 — Session 11 (Feature 011: Archive Integrity Verification)
+
+**Cut from `main`, not from `010`.** `010` is blocked on B008, and a feature branched off it would
+inherit that blocker and be unable to merge either.
+
+**Why this module.** The BRD is fully mapped — every one of FR-001 to FR-031 traces to a spec — so this
+is new scope. It was chosen from the competitive read recorded under *Considered and not adopted*: the
+open ground is "move it safely, file it correctly, and prove afterwards what happened". The product could
+prove what happened *at transfer time* and had no answer to "is my archive still intact six months
+later". Verified-offload tools check once at ingest and never again; the photo DAMs do not check at all.
+
+**No migration needed**, which is why the feature is small. `HASH_CANONICAL` already stores the
+transfer-time SHA-256 (`V002`) and the destination path and size (`V003`). Verification is that table read
+back against the disk.
+
+**The decision that matters** — `IntegrityEngine` deliberately does **not** use `HashEngine`. That class
+is cache-aware: it returns the stored digest when size and mtime are unchanged, then writes its result
+back. Both halves defeat verification. A cache hit returns the transfer-time value — the number under
+test — and would report every file intact having read nothing; the write-back would destroy the evidence
+for the next run. `IntegrityEngine.sha256Of` computes its own digest and does nothing else. Written into
+the spec as FR-067 rather than left as an implementation habit, precisely because reusing the existing
+hasher is the obvious move and is wrong.
+
+**Scale**: intact files are counted, not retained (FR-073). A clean 10M-file archive would otherwise
+produce 10M in-memory findings and exhaust the heap on exactly the archives Principle I exists for.
+
+**Honesty about limits**: quick mode cannot see a file altered in place without changing its length, so
+the mode is recorded on the run, shown on screen, and written into the report next to a sentence saying
+what it could not check. A cancelled run is never reported as clean, whatever it found — a partial pass
+presented as proof would be the most damaging thing this feature could do.
+
+**Shipped**: `IntegrityStatus`, `IntegrityFinding`, `IntegrityRun`, `IntegrityEngine`,
+`IntegrityReportWriter`, `HashIndexDao.forEachTransferred` (streams to a consumer rather than returning a
+list), `integrity.fxml`, `IntegrityController`, and `View → Verify Archive…` on `shortcut+6` — 6 rather
+than 5 so it cannot collide with Delete on branch `010`. **17 tests added; 245 pass on a clean build.**
+
+**Two bugs caught before they ran**: `forEachTransferred` first called `rs.wasNull()` inside a constructor
+argument list, where left-to-right evaluation meant it reported on `CANONICAL_PATH` instead of
+`DESTINATION_SIZE`. And the new screen's progress bar was given `progress="0.0"` in the FXML from the
+start rather than `-1.0` — applying N8 rather than repeating it.
+
+**Next action**: B008 still blocks `010` and is unanswered. `011` is independent and ready. Neither
+branch is pushed and CI has run neither.
 
 ### 2026-09-03 → 09-05 — Session 10 (Delete Files & Folders rework, N8, tracker rebuild)
 

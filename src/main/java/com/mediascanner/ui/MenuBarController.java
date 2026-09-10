@@ -189,12 +189,16 @@ public class MenuBarController {
         miJobHistory.setAccelerator(javafx.scene.input.KeyCombination.keyCombination("shortcut+4"));
         miJobHistory.setOnAction(e -> onViewJobHistory());
 
-        // This is a screen, so it belongs with the screens. It previously sat only at the bottom of
-        // the Tools menu under the name "Cleanup", where users looking to delete files did not find
-        // it.
+        // Both of these are screens, so they belong with the screens. Delete Files & Folders
+        // previously sat only at the bottom of the Tools menu under the name "Cleanup", where users
+        // looking to delete files did not find it. Both are named for what they do (N7).
         MenuItem miDeleteFiles = new MenuItem("Delete Files & Folders…");
         miDeleteFiles.setAccelerator(javafx.scene.input.KeyCombination.keyCombination("shortcut+5"));
         miDeleteFiles.setOnAction(e -> onCleanup());
+
+        MenuItem miVerifyArchive = new MenuItem("Verify Archive…");
+        miVerifyArchive.setAccelerator(javafx.scene.input.KeyCombination.keyCombination("shortcut+6"));
+        miVerifyArchive.setOnAction(e -> onVerifyArchive());
 
         miDarkMode = new CheckMenuItem("Toggle Dark Mode");
         miDarkMode.setAccelerator(javafx.scene.input.KeyCombination.keyCombination("shortcut+D"));
@@ -202,7 +206,7 @@ public class MenuBarController {
 
         menu.getItems().addAll(
             miConfiguration, miDashboard, miSummary, miJobHistory,
-            new SeparatorMenuItem(), miDeleteFiles,
+            new SeparatorMenuItem(), miDeleteFiles, miVerifyArchive,
             new SeparatorMenuItem(), miDarkMode);
         return menu;
     }
@@ -447,6 +451,11 @@ public class MenuBarController {
     /** Opens the Cleanup screen (feature 006). Destructive work lives on its own screen. */
     public void onCleanup() {
         screenNavigator.navigateTo(ScreenType.CLEANUP);
+    }
+
+    /** Opens the Verify Archive screen (feature 011). Read-only: it can change nothing. */
+    public void onVerifyArchive() {
+        screenNavigator.navigateTo(ScreenType.ARCHIVE_INTEGRITY);
     }
 
     public void onToggleDarkMode() {
