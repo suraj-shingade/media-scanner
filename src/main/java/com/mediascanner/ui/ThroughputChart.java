@@ -1,6 +1,7 @@
 package com.mediascanner.ui;
 
 import com.mediascanner.model.ThroughputSample;
+import com.mediascanner.monitor.ThroughputDownsampler;
 import javafx.geometry.Insets;
 import javafx.scene.chart.LineChart;
 import javafx.scene.chart.NumberAxis;
@@ -90,6 +91,42 @@ public class ThroughputChart extends VBox {
                 new XYChart.Data<>(s.getElapsedSeconds(), s.getMbPerSec()));
         }
         showPlaceholder(false);
+    }
+
+    /**
+     * Plots an entire run, however long, by reducing each series to an envelope (FR-077).
+     *
+     * <p>Replaces the whole series rather than appending, so it is the expensive path — the caller
+     * decides how often to call it. What it buys is that no part of the run is ever discarded from
+     * view: a four-hour job shows all four hours, and a stall an hour ago is still on screen.
+     *
+     * @param targetBuckets spans to divide the run into; plotted points are at most twice this
+     */
+    public void setWholeRun(List<ThroughputSample> samples, int targetBuckets) {
+        filesSeries.getData().clear();
+        mbSeries.getData().clear();
+
+        if (samples == null || samples.size() < MIN_SAMPLES) {
+            showPlaceholder(true);
+            return;
+        }
+
+        // Reduced independently: files/sec and MB/sec do not peak at the same instants.
+        plot(filesSeries, ThroughputDownsampler.downsample(
+            samples, ThroughputSample::getFilesPerSec, targetBuckets));
+        plot(mbSeries, ThroughputDownsampler.downsample(
+            samples, ThroughputSample::getMbPerSec, targetBuckets));
+        showPlaceholder(false);
+    }
+
+    private void plot(XYChart.Series<Number, Number> series,
+                      List<ThroughputDownsampler.Point> points) {
+        List<XYChart.Data<Number, Number>> data = new java.util.ArrayList<>(points.size());
+        for (ThroughputDownsampler.Point p : points) {
+            data.add(new XYChart.Data<>(p.elapsedSeconds(), p.value()));
+        }
+        // One bulk mutation rather than N — each add fires a layout pass on the chart.
+        series.getData().setAll(data);
     }
 
     /** Appends one live reading, trimming the oldest so the live chart stays bounded. */

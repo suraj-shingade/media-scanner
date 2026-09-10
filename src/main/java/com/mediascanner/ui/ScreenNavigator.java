@@ -23,7 +23,40 @@ public class ScreenNavigator {
         this.rootPane = rootPane;
     }
 
+    /**
+     * The dashboard is kept alive across navigations while a job is running.
+     *
+     * <p>Every other screen is cheap to rebuild from scratch. The dashboard is not: it owns the live
+     * throughput history, the refresh timeline and the resource monitor, and reloading its FXML built
+     * a second, uninitialised controller — {@code init} is only called when a job <em>starts</em>, so
+     * View → Dashboard mid-job produced a blank chart while the previous controller's timeline kept
+     * firing forever against a node no longer in the scene.
+     */
+    private Parent dashboardView;
+    private Object dashboardController;
+
+    /**
+     * Discards the retained dashboard so the next job starts from an empty chart.
+     *
+     * <p>This is what actually resets the graphs, and it is deliberately tied to starting a job
+     * rather than to opening the screen: navigating away and back must not erase the history of a run
+     * still in progress.
+     */
+    public void resetDashboard() {
+        if (dashboardController instanceof DashboardController dc) {
+            dc.shutdown();
+        }
+        dashboardView = null;
+        dashboardController = null;
+    }
+
     public Object navigateTo(ScreenType screen) {
+        if (screen == ScreenType.DASHBOARD && dashboardView != null) {
+            rootPane.setCenter(dashboardView);
+            currentController = dashboardController;
+            return dashboardController;
+        }
+
         String fxml = switch (screen) {
             case CONFIGURATION -> "/fxml/main.fxml";
             case DASHBOARD -> "/fxml/dashboard.fxml";
@@ -36,6 +69,10 @@ public class ScreenNavigator {
             FXMLLoader loader = new FXMLLoader(getClass().getResource(fxml));
             Parent view = loader.load();
             currentController = loader.getController();
+            if (screen == ScreenType.DASHBOARD) {
+                dashboardView = view;
+                dashboardController = currentController;
+            }
             rootPane.setCenter(view);
             return currentController;
         } catch (IOException e) {

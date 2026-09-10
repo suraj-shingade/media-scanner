@@ -104,6 +104,45 @@ public class ThroughputSampleDao {
         return samples;
     }
 
+    /**
+     * Every sample for a job at full resolution, chronological.
+     *
+     * <p>Used by the on-screen charts, which reduce in Java via {@code ThroughputDownsampler} so that
+     * a stored job renders exactly as the live dashboard did — same algorithm, same envelope. The SQL
+     * reduction in {@link #findDownsampled} averages, which is fine for the exported SVG but would
+     * make the same job look different on screen depending on whether it was still running.
+     *
+     * <p>At 1 Hz a 20-hour job is ~72 000 rows, a few MB. That is affordable here and nowhere near
+     * the scale the scan pipeline itself handles.
+     */
+    public List<ThroughputSample> findAllByJobId(String jobId) throws SQLException {
+        String sql = """
+            SELECT SAMPLE_AT, ELAPSED_SECONDS, FILES_PER_SEC, MB_PER_SEC, CPU_PERCENT, MEMORY_GB
+              FROM JOB_THROUGHPUT_SAMPLE
+             WHERE JOB_ID = ?
+             ORDER BY ELAPSED_SECONDS
+            """;
+        List<ThroughputSample> samples = new ArrayList<>();
+        try (PreparedStatement ps = database.getConnection().prepareStatement(sql)) {
+            ps.setString(1, jobId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    ThroughputSample s = new ThroughputSample();
+                    s.setJobId(jobId);
+                    String sampleAt = rs.getString("SAMPLE_AT");
+                    if (sampleAt != null) s.setSampleAt(Instant.parse(sampleAt));
+                    s.setElapsedSeconds(rs.getLong("ELAPSED_SECONDS"));
+                    s.setFilesPerSec(rs.getDouble("FILES_PER_SEC"));
+                    s.setMbPerSec(rs.getDouble("MB_PER_SEC"));
+                    s.setCpuPercent(rs.getDouble("CPU_PERCENT"));
+                    s.setMemoryGb(rs.getDouble("MEMORY_GB"));
+                    samples.add(s);
+                }
+            }
+        }
+        return samples;
+    }
+
     public long countByJobId(String jobId) throws SQLException {
         String sql = "SELECT COUNT(*) FROM JOB_THROUGHPUT_SAMPLE WHERE JOB_ID = ?";
         try (PreparedStatement ps = database.getConnection().prepareStatement(sql)) {

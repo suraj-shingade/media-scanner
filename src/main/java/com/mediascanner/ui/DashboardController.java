@@ -9,6 +9,7 @@ import com.mediascanner.engine.ScanEngine;
 import com.mediascanner.model.CheckpointState;
 import com.mediascanner.model.Job;
 import com.mediascanner.model.JobStatistics;
+import com.mediascanner.model.ThroughputSample;
 import com.mediascanner.monitor.ProgressTracker;
 import com.mediascanner.monitor.ResourceMonitor;
 import javafx.animation.KeyFrame;
@@ -17,6 +18,7 @@ import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.scene.control.*;
+import javafx.scene.layout.HBox;
 import javafx.stage.FileChooser;
 import javafx.util.Duration;
 import org.slf4j.Logger;
@@ -25,6 +27,9 @@ import org.slf4j.LoggerFactory;
 import java.io.File;
 import java.net.URL;
 import java.nio.file.Paths;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.ResourceBundle;
 import java.util.concurrent.Executors;
 
@@ -67,9 +72,41 @@ public class DashboardController implements Initializable {
     private AppConfig config;
     private Timeline refreshTimeline;
     private ThroughputChart chart;
-    /** Live chart window: 10 minutes at 1 Hz. Older points scroll off. */
-    private static final int LIVE_CHART_POINTS = 600;
-    private long chartElapsedSeconds = 0;
+
+    /** Points kept when showing only the recent tail. 10 minutes at 1 Hz. */
+    private static final int RECENT_CHART_POINTS = 600;
+
+    /** Spans the whole run is divided into. At most twice this many points are plotted. */
+    private static final int WHOLE_RUN_BUCKETS = 400;
+
+    /**
+     * Rebuilding the whole-run series replaces every point, so it is not something to do at 1 Hz on
+     * the FX thread. Sampling stays at 1 Hz; only the redraw is throttled.
+     */
+    private static final int WHOLE_RUN_REDRAW_EVERY_SECONDS = 5;
+
+    /**
+     * Every sample taken this job, never trimmed (FR-078).
+     *
+     * <p>The previous implementation kept only the last 600 points, so on any job longer than ten
+     * minutes the earlier history was gone from the screen for good — on a multi-hour run you could
+     * see the last ten minutes and nothing else. At 1 Hz a 20-hour job is 72 000 of these, a few MB,
+     * which is nothing next to the heap the scan itself uses.
+     */
+    private final List<ThroughputSample> liveSamples = new ArrayList<>();
+
+    private ToggleButton wholeRunToggle;
+    private Label sampleCountLabel;
+
+    /**
+     * Wall-clock start of charting, so elapsed seconds are real.
+     *
+     * <p>This used to be a counter incremented once per UI refresh. Under load the FX thread drops
+     * and delays ticks, so the live chart's x-axis drifted away from the engine's own elapsed clock —
+     * the same job told two different stories about when something happened, and only the stored one
+     * was true.
+     */
+    private long chartStartMillis;
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {}
@@ -94,9 +131,12 @@ public class DashboardController implements Initializable {
         }
 
         resourceMonitor.start();
+        chartStartMillis = System.currentTimeMillis();
         if (chartContainer != null) {
             chart = new ThroughputChart();
+            chartContainer.getChildren().add(buildChartControls());
             chartContainer.getChildren().add(chart);
+            javafx.scene.layout.VBox.setVgrow(chart, javafx.scene.layout.Priority.ALWAYS);
         }
         startRefreshTimeline();
         startScanAsync();
@@ -104,6 +144,24 @@ public class DashboardController implements Initializable {
 
     public ScanEngine getScanEngine() {
         return scanEngine;
+    }
+
+    /**
+     * Stops this dashboard's background work when it is discarded.
+     *
+     * <p>Without this the refresh {@link Timeline} outlived the screen: navigating away left it
+     * firing once a second forever, against a chart no longer in the scene graph, for the rest of the
+     * application's life. Every job started added another one.
+     */
+    public void shutdown() {
+        if (refreshTimeline != null) {
+            refreshTimeline.stop();
+            refreshTimeline = null;
+        }
+        if (resourceMonitor != null) {
+            resourceMonitor.stop();
+        }
+        liveSamples.clear();
     }
 
     private void startRefreshTimeline() {
@@ -144,12 +202,77 @@ public class DashboardController implements Initializable {
         memoryLabel.setText(String.format("%.2f GB", resourceMonitor.getMemoryGb()));
         threadsLabel.setText(String.valueOf(resourceMonitor.getActiveThreads()));
 
-        if (chart != null) {
-            chart.appendSample(++chartElapsedSeconds, snap.avgFilesPerSec5s,
-                snap.avgMbPerSec5s, LIVE_CHART_POINTS);
-        }
+        recordAndRenderSample(snap);
 
         progressTracker.tick();
+    }
+
+    // ----------------------------------------------------------------- charting
+
+    /** The Whole run / Last 10 minutes switch, plus how much history is being held. */
+    private javafx.scene.Node buildChartControls() {
+        wholeRunToggle = new ToggleButton("Whole run");
+        wholeRunToggle.setSelected(true);
+        wholeRunToggle.setTooltip(new Tooltip(
+            "Whole run shows every sample since the job started, reduced to an envelope so stalls "
+          + "and bursts stay visible. Switch off to follow only the last 10 minutes."));
+        // Switching view must repaint now rather than at the next tick, or the button feels dead.
+        wholeRunToggle.setOnAction(e -> renderChart(true));
+
+        sampleCountLabel = new Label("0 samples");
+        sampleCountLabel.getStyleClass().add("subtle");
+
+        HBox controls = new HBox(10, wholeRunToggle, sampleCountLabel);
+        controls.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        return controls;
+    }
+
+    private void recordAndRenderSample(ProgressTracker.Snapshot snap) {
+        if (chart == null) return;
+
+        long elapsed = (System.currentTimeMillis() - chartStartMillis) / 1000;
+        liveSamples.add(new ThroughputSample(
+            job.getJobId(), Instant.now(), elapsed,
+            snap.avgFilesPerSec5s, snap.avgMbPerSec5s,
+            resourceMonitor.getCpuPercent(), resourceMonitor.getMemoryGb()));
+
+        if (sampleCountLabel != null) {
+            sampleCountLabel.setText(liveSamples.size() + " samples · "
+                + formatElapsed(elapsed) + " elapsed");
+        }
+        renderChart(false);
+    }
+
+    /**
+     * @param force repaint even if the whole-run throttle would otherwise skip this tick
+     */
+    private void renderChart(boolean force) {
+        if (chart == null || liveSamples.isEmpty()) return;
+
+        boolean wholeRun = wholeRunToggle == null || wholeRunToggle.isSelected();
+        if (wholeRun) {
+            long elapsed = liveSamples.get(liveSamples.size() - 1).getElapsedSeconds();
+            if (force || elapsed % WHOLE_RUN_REDRAW_EVERY_SECONDS == 0) {
+                chart.setWholeRun(liveSamples, WHOLE_RUN_BUCKETS);
+            }
+            return;
+        }
+
+        // Tail view: cheaper to append than to rebuild, so keep the incremental path.
+        ThroughputSample latest = liveSamples.get(liveSamples.size() - 1);
+        if (force) {
+            int from = Math.max(0, liveSamples.size() - RECENT_CHART_POINTS);
+            chart.setWholeRun(liveSamples.subList(from, liveSamples.size()), RECENT_CHART_POINTS);
+        } else {
+            chart.appendSample(latest.getElapsedSeconds(), latest.getFilesPerSec(),
+                latest.getMbPerSec(), RECENT_CHART_POINTS);
+        }
+    }
+
+    private static String formatElapsed(long seconds) {
+        if (seconds < 60) return seconds + "s";
+        if (seconds < 3600) return String.format("%dm %02ds", seconds / 60, seconds % 60);
+        return String.format("%dh %02dm", seconds / 3600, (seconds % 3600) / 60);
     }
 
     private void startScanAsync() {
@@ -172,6 +295,9 @@ public class DashboardController implements Initializable {
         if (refreshTimeline != null) refreshTimeline.stop();
         resourceMonitor.stop();
         refreshUI();
+        // The whole-run redraw is throttled to every few seconds, so the last one may be skipped.
+        // Force it, or the final chart stops short of where the job actually ended.
+        renderChart(true);
         navigateToSummary();
     }
 
