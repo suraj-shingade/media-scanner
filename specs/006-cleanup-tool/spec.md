@@ -237,6 +237,29 @@ zero-byte file is still a file.
 - **FR-058**: Deletion reports MUST survive the deletion itself and remain readable after the application
   restarts.
 
+**Direct deletion (no prior analysis)**
+
+Added after the original feature shipped, in response to user feedback that requiring a full analysis
+pass before choosing anything made the tool feel heavier than the job. FR-038 to FR-042 continue to
+govern the review mode unchanged; the requirements below govern the direct mode, which is the one the
+screen opens on.
+
+- **FR-059**: System MUST allow the user to select what to delete — by content group, by filename
+  extension, and whether to remove empty folders — without first running an analysis pass. No selection
+  may be ticked by default.
+- **FR-060**: System MUST obtain an explicit affirmative confirmation **before the walk begins**. Because
+  no count exists at that point, the confirmation MUST instead state the target folder, every criterion
+  selected, that deletion is permanent and does not use the Recycle Bin, and that media is never deleted.
+  This is a deliberate narrowing of FR-041 for this mode: the user confirms the rule, not the tally.
+- **FR-061**: Once confirmed, System MUST delete matching files as they are encountered, in a single pass,
+  without a second walk and without holding the candidate list in memory.
+- **FR-062**: Selecting a file extension MUST NOT widen what is deletable. FR-044 and FR-045 apply to
+  every file removed in this mode exactly as in the review mode, so naming a media extension deletes
+  nothing.
+- **FR-063**: System MUST show live progress during the pass — files examined, files deleted, bytes freed
+  — and MUST present an end-of-run summary of those totals, the time taken, and a breakdown of what was
+  deleted by content group.
+
 ### Key Entities
 
 - **Cleanup Run**: one user-initiated pass over a selected directory. Holds the selected root, the run

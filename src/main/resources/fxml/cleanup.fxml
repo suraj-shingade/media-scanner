@@ -6,28 +6,28 @@
 
 <BorderPane xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="com.mediascanner.ui.CleanupController"
-            prefWidth="1000" prefHeight="700">
+            prefWidth="1040" prefHeight="760">
 
     <top>
         <VBox styleClass="header-bar">
             <padding><Insets top="12" right="16" bottom="12" left="16"/></padding>
-            <Label text="Cleanup" styleClass="app-title"/>
+            <Label text="Delete Files &amp; Folders" styleClass="app-title"/>
+            <Label styleClass="subtle"
+                   text="Photos and videos are never deleted, whatever they are named."/>
         </VBox>
     </top>
 
     <center>
-        <VBox spacing="12">
-            <padding><Insets top="20" right="24" bottom="20" left="24"/></padding>
+        <VBox spacing="10">
+            <padding><Insets top="16" right="24" bottom="12" left="24"/></padding>
 
-            <!-- Directory selection -->
+            <!-- Folder, shared by both modes -->
             <VBox spacing="6">
-                <Label text="Directory to clean" styleClass="section-label"/>
+                <Label text="Folder to clean" styleClass="section-label"/>
                 <HBox spacing="8">
                     <TextField fx:id="directoryField" HBox.hgrow="ALWAYS"
                                promptText="Select a folder..." editable="false"/>
                     <Button text="Browse..." onAction="#onBrowse"/>
-                    <Button fx:id="analyzeButton" text="Analyze" onAction="#onAnalyze"
-                            disable="true"/>
                 </HBox>
             </VBox>
 
@@ -35,37 +35,116 @@
                    style="-fx-text-fill: #b00020; -fx-font-weight: bold;" managed="false"
                    visible="false"/>
 
-            <Separator/>
+            <TabPane fx:id="modeTabs" tabClosingPolicy="UNAVAILABLE" VBox.vgrow="ALWAYS">
 
-            <!-- Preview -->
-            <Label text="What was found" styleClass="section-label"/>
-            <TableView fx:id="groupTable" prefHeight="220">
-                <columns>
-                    <TableColumn fx:id="selectColumn" text="Delete" prefWidth="70"/>
-                    <TableColumn fx:id="groupColumn" text="Group" prefWidth="260"/>
-                    <TableColumn fx:id="countColumn" text="Files" prefWidth="110"/>
-                    <TableColumn fx:id="sizeColumn" text="Size" prefWidth="140"/>
-                </columns>
-            </TableView>
+                <!-- ============================ Mode 1: pick what to delete, then delete -->
+                <Tab text="Choose what to delete">
+                    <VBox spacing="12">
+                        <padding><Insets top="14" right="14" bottom="14" left="14"/></padding>
 
-            <Label text="Files in the selected group" styleClass="section-label"/>
-            <ListView fx:id="fileList" prefHeight="180"/>
+                        <Label text="No analysis needed. Tick what you want removed, then Delete."
+                               styleClass="subtle" wrapText="true"/>
 
-            <Label fx:id="statusLabel" text="Choose a folder and click Analyze."/>
+                        <HBox spacing="24" VBox.vgrow="ALWAYS">
 
-            <!-- Actions -->
-            <HBox spacing="12" alignment="CENTER_RIGHT">
-                <Button fx:id="pruneButton" text="Prune Empty Folders..."
-                        onAction="#onPruneEmptyFolders" disable="true"/>
-                <Button fx:id="deleteButton" text="Delete Selected..." onAction="#onDelete"
-                        disable="true"
-                        style="-fx-background-color: #b00020; -fx-text-fill: white;"/>
-            </HBox>
+                            <VBox spacing="8" prefWidth="330">
+                                <Label text="File types" styleClass="section-label"/>
+                                <CheckBox fx:id="cbAndroid"   text="Android packages (.apk)"/>
+                                <CheckBox fx:id="cbExecutable" text="Executables and installers"/>
+                                <CheckBox fx:id="cbArchive"   text="Archives (zip, rar, 7z...)"/>
+                                <CheckBox fx:id="cbDocument"  text="Documents and text"/>
+                                <CheckBox fx:id="cbAudio"     text="Audio"/>
+                                <CheckBox fx:id="cbOther"     text="Other non-media"/>
+                                <Separator/>
+                                <CheckBox fx:id="cbEmptyFolders" text="Also remove empty folders"/>
+                            </VBox>
+
+                            <VBox spacing="8" HBox.hgrow="ALWAYS">
+                                <Label text="File formats to delete" styleClass="section-label"/>
+                                <Label styleClass="subtle" wrapText="true"
+                                       text="Add extensions such as tmp, log or bak. Matched on the name, but a photo or video is still never deleted."/>
+                                <HBox spacing="8">
+                                    <TextField fx:id="extensionField" HBox.hgrow="ALWAYS"
+                                               promptText="e.g. tmp"
+                                               onAction="#onAddExtension"/>
+                                    <Button text="Add" onAction="#onAddExtension"/>
+                                    <Button text="Remove" onAction="#onRemoveExtension"/>
+                                </HBox>
+                                <ListView fx:id="extensionList" VBox.vgrow="ALWAYS"/>
+                            </VBox>
+                        </HBox>
+
+                        <HBox spacing="12" alignment="CENTER_RIGHT">
+                            <Button fx:id="directDeleteButton" text="Delete Now..."
+                                    onAction="#onDirectDelete" disable="true"
+                                    style="-fx-background-color: #b00020; -fx-text-fill: white;"/>
+                        </HBox>
+                    </VBox>
+                </Tab>
+
+                <!-- ============================ Mode 2: analyse, review, then delete -->
+                <Tab text="Review first">
+                    <VBox spacing="10">
+                        <padding><Insets top="14" right="14" bottom="14" left="14"/></padding>
+
+                        <HBox spacing="8" alignment="CENTER_LEFT">
+                            <Label text="Scan the folder first, then choose from what was found."
+                                   styleClass="subtle"/>
+                            <Button fx:id="analyzeButton" text="Analyze" onAction="#onAnalyze"
+                                    disable="true"/>
+                        </HBox>
+
+                        <Label text="What was found" styleClass="section-label"/>
+                        <TableView fx:id="groupTable" prefHeight="200">
+                            <columns>
+                                <TableColumn fx:id="selectColumn" text="Delete" prefWidth="70"/>
+                                <TableColumn fx:id="groupColumn" text="Group" prefWidth="260"/>
+                                <TableColumn fx:id="countColumn" text="Files" prefWidth="110"/>
+                                <TableColumn fx:id="sizeColumn" text="Size" prefWidth="140"/>
+                            </columns>
+                        </TableView>
+
+                        <Label text="Files in the selected group" styleClass="section-label"/>
+                        <ListView fx:id="fileList" VBox.vgrow="ALWAYS" prefHeight="150"/>
+
+                        <HBox spacing="12" alignment="CENTER_RIGHT">
+                            <Button fx:id="pruneButton" text="Remove Empty Folders..."
+                                    onAction="#onPruneEmptyFolders" disable="true"/>
+                            <Button fx:id="deleteButton" text="Delete Selected..." onAction="#onDelete"
+                                    disable="true"
+                                    style="-fx-background-color: #b00020; -fx-text-fill: white;"/>
+                        </HBox>
+                    </VBox>
+                </Tab>
+            </TabPane>
+
+            <!-- Live activity: what the app is doing right now -->
+            <VBox fx:id="activityBox" spacing="4" managed="false" visible="false">
+                <Separator/>
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <ProgressBar fx:id="activityBar" prefWidth="220" progress="0.0"/>
+                    <Label fx:id="activityLabel" text=""/>
+                    <Button fx:id="cancelButton" text="Cancel" onAction="#onCancel"/>
+                </HBox>
+            </VBox>
+
+            <!-- What happened after the last operation -->
+            <VBox fx:id="resultBox" spacing="6" managed="false" visible="false">
+                <Separator/>
+                <Label text="Result" styleClass="section-label"/>
+                <GridPane fx:id="statsGrid" hgap="24" vgap="4">
+                    <columnConstraints>
+                        <ColumnConstraints minWidth="240"/>
+                        <ColumnConstraints minWidth="120"/>
+                    </columnConstraints>
+                </GridPane>
+                <Label fx:id="resultReportLabel" styleClass="subtle" wrapText="true"/>
+            </VBox>
         </VBox>
     </center>
 
     <bottom>
-        <Label fx:id="footerLabel" text="Deletion is permanent and cannot be undone."
+        <Label fx:id="statusLabel" text="Choose a folder to begin."
                style="-fx-padding: 6 16 6 16; -fx-background-color: #f0f0f0;"/>
     </bottom>
 </BorderPane>
