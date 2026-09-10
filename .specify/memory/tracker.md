@@ -311,6 +311,50 @@ FR-031 reports and history (feature 005); M3 truncated-media detection, M4 disk 
 
 ## Session Log
 
+### 2026-09-07 — Session 12 (Feature 012: full-run throughput history)
+
+**Branch `012-throughput-history`, cut from `main` @ `53735cd`.** Third open branch; `010` is blocked on
+B008 and `011` is ready. All three are independent.
+
+> This file is `main`'s copy. The Session 10 tracker rebuild — B008 and the corrected
+> `HASH_CANONICAL` invariant — lives on `010` and `011`. Reconcile when merging.
+
+**One report, three defects.** User: *"graphs are not reseting … we show realtime and then i think last
+2-3 mins of data … show the details everything. save the information."*
+
+1. **History was thrown away.** `LIVE_CHART_POINTS = 600` trimmed to the last 10 minutes at 1 Hz. On a
+   four-hour job you saw the last ten minutes and the rest was gone from screen for good.
+2. **Navigating back built a blank dashboard.** `DashboardController.init` is called *only* when a job
+   starts. `View → Dashboard` went through `navigateTo`, reloaded the FXML and created a **second,
+   uninitialised controller** — no chart, no timeline — while the original's refresh `Timeline` kept
+   firing once a second forever against a detached node. One leaked timer per job started. This is
+   almost certainly what "not resetting" meant.
+3. **The x-axis was not time.** Elapsed came from `++chartElapsedSeconds`, incremented per UI refresh.
+   Under load the FX thread drops ticks, so the live chart drifted from the engine's own elapsed clock —
+   the same job telling two different stories, only the persisted one true.
+
+**Saving was already correct** and was left alone: the engine writes a sample per second through
+`JobEventRecorder` into `JOB_THROUGHPUT_SAMPLE` on a 5-second flush; at 1 Hz the queue is never pressured
+and nothing is dropped. The complaint was about display, not persistence.
+
+**Envelope, not average.** New `ThroughputDownsampler` keeps each bucket's **min and max** in
+chronological order rather than a mean. A mean is what the stored-job SQL does, and on a long job it
+dilutes a 40-second stall across a two-minute bucket into noise — erasing the single most interesting
+event in the run. Series are reduced independently, since files/sec and MB/sec do not peak together.
+
+**Also**: `ScreenNavigator` now retains the dashboard while a job runs and `resetDashboard()` is called
+only when a job starts — so the graphs reset on a new job and *not* on navigation, which is the right way
+round. `DashboardController.shutdown()` stops the timeline and monitor when discarded.
+
+**Shipped**: `ThroughputDownsampler` (+9 tests), `ThroughputChart.setWholeRun`, whole-run/recent toggle
+with a live sample count, `ThroughputSampleDao.findAllByJobId`, stored chart using the same reduction as
+live. FR-077–FR-085. **237 tests, 0 failures** (157 unit, 80 integration), clean build, Windows only.
+
+**Known gap, deliberately not fixed**: the exported HTML SVG still uses the averaged SQL reduction. It is
+unchanged from before, so not a regression — recorded rather than silently left.
+
+**Next action**: B008 still unanswered. Three branches now await merge decisions.
+
 ### 2026-09-06 — Session 11 (Feature 011: Archive Integrity Verification)
 
 **Cut from `main`, not from `010`.** `010` is blocked on B008, and a feature branched off it would

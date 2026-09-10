@@ -226,6 +226,9 @@ public class MainController implements Initializable {
     private void navigateToDashboard(Job job) {
         ScreenNavigator nav = MediaScannerApp.getScreenNavigator();
         if (nav != null) {
+            // A new job is the one moment the graphs should start empty. Navigating to the dashboard
+            // any other way now reuses the running one instead of building a blank second copy.
+            nav.resetDashboard();
             Object ctrl = nav.navigateTo(ScreenNavigator.ScreenType.DASHBOARD);
             if (ctrl instanceof DashboardController dc) {
                 dc.init(job, database, config);

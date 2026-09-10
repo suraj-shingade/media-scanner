@@ -1,6 +1,7 @@
 package com.mediascanner.ui;
 
 import com.mediascanner.model.ThroughputSample;
+import com.mediascanner.monitor.ThroughputDownsampler;
 import javafx.geometry.Insets;
 import javafx.scene.chart.LineChart;
 import javafx.scene.chart.NumberAxis;
@@ -32,6 +33,8 @@ public class ThroughputChart extends VBox {
 
     private final LineChart<Number, Number> filesChart;
     private final LineChart<Number, Number> mbChart;
+    private final NumberAxis filesXAxis;
+    private final NumberAxis mbXAxis;
     private final XYChart.Series<Number, Number> filesSeries = new XYChart.Series<>();
     private final XYChart.Series<Number, Number> mbSeries = new XYChart.Series<>();
     private final Label placeholder = new Label("Not enough samples yet to plot throughput.");
@@ -39,8 +42,10 @@ public class ThroughputChart extends VBox {
     private final VBox charts = new VBox(6);
 
     public ThroughputChart() {
-        filesChart = buildChart("files/sec", "#2f6fd0");
-        mbChart = buildChart("MB/sec", "#d0762f");
+        filesXAxis = newTimeAxis();
+        mbXAxis = newTimeAxis();
+        filesChart = buildChart(filesXAxis, "files/sec", "#2f6fd0");
+        mbChart = buildChart(mbXAxis, "MB/sec", "#d0762f");
 
         VBox.setVgrow(filesChart, Priority.ALWAYS);
         VBox.setVgrow(mbChart, Priority.ALWAYS);
@@ -59,9 +64,13 @@ public class ThroughputChart extends VBox {
         showPlaceholder(true);
     }
 
-    private LineChart<Number, Number> buildChart(String yLabel, String colour) {
-        NumberAxis xAxis = new NumberAxis();
-        xAxis.setLabel("Elapsed (seconds)");
+    private NumberAxis newTimeAxis() {
+        NumberAxis axis = new NumberAxis();
+        axis.setLabel("Elapsed (seconds)");
+        return axis;
+    }
+
+    private LineChart<Number, Number> buildChart(NumberAxis xAxis, String yLabel, String colour) {
         NumberAxis yAxis = new NumberAxis();
         yAxis.setLabel(yLabel);
 
@@ -90,6 +99,97 @@ public class ThroughputChart extends VBox {
                 new XYChart.Data<>(s.getElapsedSeconds(), s.getMbPerSec()));
         }
         showPlaceholder(false);
+    }
+
+    /**
+     * Plots an entire run, however long, by reducing each series to an envelope (FR-077).
+     *
+     * <p>Replaces the whole series rather than appending, so it is the expensive path — the caller
+     * decides how often to call it. What it buys is that no part of the run is ever discarded from
+     * view: a four-hour job shows all four hours, and a stall an hour ago is still on screen.
+     *
+     * @param targetBuckets spans to divide the run into; plotted points are at most twice this
+     */
+    public void setWholeRun(List<ThroughputSample> samples, int targetBuckets) {
+        filesSeries.getData().clear();
+        mbSeries.getData().clear();
+        // Whole-run wants the axis to fit the data again, undoing any pinned window.
+        releaseAxes();
+
+        if (samples == null || samples.size() < MIN_SAMPLES) {
+            showPlaceholder(true);
+            return;
+        }
+
+        // Reduced independently: files/sec and MB/sec do not peak at the same instants.
+        plot(filesSeries, ThroughputDownsampler.downsample(
+            samples, ThroughputSample::getFilesPerSec, targetBuckets));
+        plot(mbSeries, ThroughputDownsampler.downsample(
+            samples, ThroughputSample::getMbPerSec, targetBuckets));
+        showPlaceholder(false);
+    }
+
+    private void plot(XYChart.Series<Number, Number> series,
+                      List<ThroughputDownsampler.Point> points) {
+        List<XYChart.Data<Number, Number>> data = new java.util.ArrayList<>(points.size());
+        for (ThroughputDownsampler.Point p : points) {
+            data.add(new XYChart.Data<>(p.elapsedSeconds(), p.value()));
+        }
+        // One bulk mutation rather than N — each add fires a layout pass on the chart.
+        series.getData().setAll(data);
+    }
+
+    /**
+     * Shows the most recent {@code windowSeconds} as a fixed-width window that scrolls, the way Task
+     * Manager does (FR-086).
+     *
+     * <p>The important part is that the x-axis stops auto-ranging. Left to itself the axis fits
+     * whatever data it holds, so as a job runs the visible span keeps stretching and the trace
+     * compresses toward the left — which is what made the whole-run view feel heavy and unreadable.
+     * Pinning the bounds to a window that slides keeps the horizontal scale constant: a spike is the
+     * same width an hour in as it was in the first minute, and the eye can compare them.
+     *
+     * <p>The window is drawn at full resolution. At 1 Hz even ten minutes is 600 points, which
+     * LineChart handles without help — downsampling is only needed for the whole-run view.
+     */
+    public void showWindow(List<ThroughputSample> samples, long windowSeconds) {
+        if (samples == null || samples.isEmpty()) {
+            clear();
+            return;
+        }
+
+        long latest = samples.get(samples.size() - 1).getElapsedSeconds();
+        long lower = Math.max(0, latest - windowSeconds);
+        // Before the first full window has elapsed, hold the axis at its full width rather than
+        // growing it — otherwise the trace stretches as it fills, which reads as speeding up.
+        long upper = Math.max(windowSeconds, latest);
+
+        List<XYChart.Data<Number, Number>> files = new java.util.ArrayList<>();
+        List<XYChart.Data<Number, Number>> mb = new java.util.ArrayList<>();
+        for (ThroughputSample s : samples) {
+            if (s.getElapsedSeconds() < lower) continue;
+            files.add(new XYChart.Data<>(s.getElapsedSeconds(), s.getFilesPerSec()));
+            mb.add(new XYChart.Data<>(s.getElapsedSeconds(), s.getMbPerSec()));
+        }
+
+        pinAxis(filesXAxis, lower, upper);
+        pinAxis(mbXAxis, lower, upper);
+        filesSeries.getData().setAll(files);
+        mbSeries.getData().setAll(mb);
+        showPlaceholder(files.size() < MIN_SAMPLES);
+    }
+
+    private void pinAxis(NumberAxis axis, long lower, long upper) {
+        axis.setAutoRanging(false);
+        axis.setLowerBound(lower);
+        axis.setUpperBound(upper);
+        // Roughly six labels, rounded to a whole second so they do not flicker between frames.
+        axis.setTickUnit(Math.max(1, (upper - lower) / 6.0));
+    }
+
+    private void releaseAxes() {
+        filesXAxis.setAutoRanging(true);
+        mbXAxis.setAutoRanging(true);
     }
 
     /** Appends one live reading, trimming the oldest so the live chart stays bounded. */

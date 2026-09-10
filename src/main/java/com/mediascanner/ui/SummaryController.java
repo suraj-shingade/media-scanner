@@ -105,15 +105,27 @@ public class SummaryController implements Initializable {
         }
     }
 
+    /** Spans the run is divided into on screen. Matches the live dashboard so the two agree. */
+    private static final int CHART_BUCKETS = 400;
+
     private void loadThroughput() {
         if (database == null || stats == null) return;
+
+        ThroughputSampleDao dao = new ThroughputSampleDao(database);
+        List<ThroughputSample> raw = Collections.emptyList();
         try {
-            samples = new ThroughputSampleDao(database).findDownsampled(stats.getJobId(), 600);
+            raw = dao.findAllByJobId(stats.getJobId());
+            // The exported SVG keeps the averaged SQL reduction: it is a fixed-size static image and
+            // does not need the envelope. The on-screen chart below does, so that a finished job
+            // looks exactly as it did while running.
+            samples = dao.findDownsampled(stats.getJobId(), 600);
         } catch (Exception e) {
             log.warn("Could not load throughput samples: {}", e.getMessage());
             samples = Collections.emptyList();
         }
-        if (chart != null) chart.setSamples(samples);
+        if (chart != null) {
+            chart.setWholeRun(raw.isEmpty() ? samples : raw, CHART_BUCKETS);
+        }
     }
 
     private void populateUI() {
